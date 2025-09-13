@@ -4,6 +4,13 @@
 <p align="center">
   <img src="assets/etoile_grid.png" width="45%" alt="Radio Map Scene">
   <img src="assets/san_francisco_mesh.png" width="45%" alt="Radio Map Example">
+    <br>
+    <em>Left:</em> Example of a radio map scene with transmitters (red). <em>Right:</em> Example of a radio map over San Francisco.
+    <br>
+  <img src="assets/high_res.png" width="45%" alt="High Resolution">
+  <img src="assets/low_res.png" width="45%" alt="Low Resolution">
+    <br>
+    <em>Left:</em> High-resolution radio map. <em>Right:</em> Example of "downsampled" low-resolution radio map.
 </p>
 
 ## Setup
