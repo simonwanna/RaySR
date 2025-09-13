@@ -7,7 +7,7 @@
 </p>
 
 ## Setup
-1) Install uv `https://github.com/astral-sh/uv`.
+1) Install [uv](https://github.com/astral-sh/uv).
 2) Sync env with `uv sync` (creates a virtual environment in `.venv`).
 3) You can activate the virtual environment with `source .venv/bin/activate` and deactivate with `deactivate` OR just run `uv run <command>` to run commands in the virtual environment.
 4) Install the pre-commit hooks with `pre-commit install` (for development).
