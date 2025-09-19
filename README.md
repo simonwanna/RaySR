@@ -18,3 +18,7 @@
 2) Sync env with `uv sync` (creates a virtual environment in `.venv`).
 3) You can activate the virtual environment with `source .venv/bin/activate` and deactivate with `deactivate` OR just run `uv run <command>` to run commands in the virtual environment.
 4) Install the pre-commit hooks with `pre-commit install` (for development).
+
+## Environment Instructions
+- To add dependencies, add them to `pyproject.toml` and run `uv sync`.
+- Optionally, you can use `uv add <package>` to add a package and sync the environment, e.g. `uv add 'requests==2.31.0'`.
