@@ -209,3 +209,10 @@ __marimo__/
 
 # Local
 **/personal_notes.md
+outputs/
+lightning_logs/
+logs/
+checkpoints/
+.vscode/
+example.ipynb
+**/test_out/
