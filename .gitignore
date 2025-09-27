@@ -216,3 +216,5 @@ checkpoints/
 .vscode/
 example.ipynb
 **/test_out/
+src/poc/data/
+**/processed_data/

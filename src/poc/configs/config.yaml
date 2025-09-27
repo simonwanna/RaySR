@@ -1,0 +1,18 @@
+defaults:
+  - model: pan
+  - data: radio_maps
+  - trainer: default
+  - _self_
+
+# Hydra settings
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+# Experiment settings
+seed: 42
+work_dir: ${oc.env:PWD}
+
+# Paths
+data_dir: ${work_dir}/src/poc/processed_data/train_val
+save_dir: ${work_dir}/outputs
