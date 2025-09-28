@@ -1,0 +1,32 @@
+# @package _global_
+trainer:
+  _target_: lightning.Trainer
+  
+  accelerator: cpu
+  devices: 1
+  precision: 32
+  num_sanity_val_steps: 1
+  
+  max_epochs: 10
+  check_val_every_n_epoch: 1
+  
+  # Logging
+  log_every_n_steps: 1
+  enable_progress_bar: true
+  
+  # Callbacks
+  callbacks:
+    - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+      dirpath: ${save_dir}/checkpoints
+      filename: pan-{epoch:02d}-{val_loss:.2f}
+      monitor: val_loss
+      save_top_k: 3
+      mode: min
+    
+    - _target_: lightning.pytorch.callbacks.EarlyStopping
+      monitor: val_loss
+      patience: 15
+      mode: min
+    
+    - _target_: lightning.pytorch.callbacks.LearningRateMonitor
+      logging_interval: step

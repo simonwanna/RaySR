@@ -1,0 +1,18 @@
+# @package _global_
+model:
+  _target_: poc.models.pan.PANLightningModule
+  
+  # Model architecture
+  scale: 4      # Upscaling factor
+  in_nc: 1      # Single channel radio maps
+  out_nc: 1     # Single channel output
+  nf: 40        # Number of features
+  unf: 24       # Upsampling features
+  nb: 16        # Number of blocks
+  bam: false    # Use BAM attention or PixelAttention
+  
+  # Training
+  learning_rate: 1e-4
+  weight_decay: 1e-4
+  scheduler: cosine
+  warmup_epochs: 5
