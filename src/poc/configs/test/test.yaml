@@ -1,6 +1,0 @@
-# @package _global_
-test:
-  data_dir: src/poc/processed_data/test
-  checkpoint: /home/simon/Devspace/KTH/RaySR/outputs/checkpoints/pan-epoch=11-val_loss=0.21.ckpt
-  save_dir: src/poc/test_out
-  scale: 2

@@ -1,0 +1,8 @@
+# @package _global_
+test:
+  data_dir: ${data_dir}/test
+  checkpoint: /home/simon/Code/RaySR/outputs/2025-10-04/16-06-36/checkpoints/pan-epoch=06-val_loss=6.614.ckpt
+  save_dir: src/poc/test_out
+  scale: 2
+  db_floor: ${db_floor}
+  db_ceiling: ${db_ceiling}

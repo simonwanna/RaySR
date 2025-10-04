@@ -5,6 +5,7 @@ defaults:
   - data/transmitter
   - data/rm_module
   - trainer: default
+  - test: default
   - _self_
 
 # Hydra settings
@@ -17,5 +18,5 @@ seed: 42
 work_dir: ${oc.env:PWD}
 
 # Paths
-data_dir: ${work_dir}/src/poc/processed_data/train_val
+data_dir: ${work_dir}/src/poc/processed_data
 save_dir: ${work_dir}/outputs   # where to save logs, checkpoints, etc.

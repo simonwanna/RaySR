@@ -5,6 +5,7 @@ import logging
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
@@ -137,3 +138,34 @@ class BamBlock(nn.Module):
         sa_ch = self.sa(x)
         out = ca_ch.mul(sa_ch) * x
         return out
+
+
+class CharbonnierLoss(nn.Module):
+    """Similar to L1 but differentiable at 0."""
+
+    def __init__(self, eps: float = 1e-3):
+        super().__init__()
+        self.eps2 = eps * eps
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        return torch.mean(torch.sqrt((x - y) ** 2 + self.eps2))
+
+
+class GradientLoss(nn.Module):
+    """L1 loss on image gradients (Sobel)."""
+
+    def __init__(self):
+        super().__init__()
+        kx = torch.tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]], dtype=torch.float32).view(1, 1, 3, 3)
+        ky = torch.tensor([[1, 2, 1], [0, 0, 0], [-1, -2, -1]], dtype=torch.float32).view(1, 1, 3, 3)
+        self.register_buffer("kx", kx)
+        self.register_buffer("ky", ky)
+
+    def _grad(self, x: torch.Tensor) -> torch.Tensor:
+        C = x.shape[1]
+        gx = F.conv2d(x, self.kx.repeat(C, 1, 1, 1), padding=1, groups=C)
+        gy = F.conv2d(x, self.ky.repeat(C, 1, 1, 1), padding=1, groups=C)
+        return torch.sqrt(gx * gx + gy * gy + 1e-12)
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        return F.l1_loss(self._grad(x), self._grad(y))

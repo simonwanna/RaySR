@@ -4,8 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from poc.data_modules.helpers import standarize_img
-
 
 def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
     arr = tensor.squeeze().cpu().numpy()
@@ -14,10 +12,10 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
 
 def show_sample(result_path: str) -> None:
     data = torch.load(result_path, map_location="cpu")
-    lr = tensor_to_image(standarize_img(data["lr"]))
-    hr = tensor_to_image(standarize_img(data["hr"]))
-    pred = tensor_to_image(standarize_img(data["pred"]))
-    interp = tensor_to_image(standarize_img(data["interp"]))
+    lr = tensor_to_image(data["lr"])
+    hr = tensor_to_image(data["hr"])
+    pred = tensor_to_image(data["pred"])
+    interp = tensor_to_image(data["interp"])
     metrics = data["metrics"]
 
     extent = None
@@ -27,7 +25,7 @@ def show_sample(result_path: str) -> None:
     plt.subplots_adjust(hspace=0.3)
 
     im0 = axs[0, 0].imshow(lr, cmap="viridis", extent=extent, origin=origin)
-    axs[0, 0].set_title(f"LR\nPSNR: {metrics['model']['psnr']:.2f}\nSSIM: {metrics['model']['ssim']:.3f}")
+    axs[0, 0].set_title("LR (Input)")
     axs[0, 0].axis("off")
 
     axs[0, 1].imshow(hr, cmap="viridis", extent=extent, origin=origin)

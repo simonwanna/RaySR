@@ -6,9 +6,8 @@ generator:
 
   # Data generation
   metric_type: path_gain  # path_gain, rss, or sinr
-  n_samples: 8
-  dataset_path: ${data_dir}  # change data_dir in the main config file
+  n_samples: 20
+  dataset_path: ${data_dir}/train_val  # change data_dir in the main config file
   naming_convention: ${scene_name}_sample  # + _{sample.sample_id:04d}.pt
   to_db: true  # Convert to dB scale before saving
   db_floor: ${db_floor}  # dB floor for path_gain and sinr, None for no floor
-    

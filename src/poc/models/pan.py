@@ -6,7 +6,14 @@ import torch.nn.functional as F
 import torchmetrics
 from lightning import LightningModule
 
-from poc.models.modeling_utils import SCPA, BamBlock, PixelAttentionBlock, make_layer
+from poc.models.modeling_utils import (
+    SCPA,
+    BamBlock,
+    CharbonnierLoss,
+    GradientLoss,
+    PixelAttentionBlock,
+    make_layer,
+)
 
 
 class PANLightningModule(LightningModule):
@@ -23,6 +30,9 @@ class PANLightningModule(LightningModule):
         weight_decay: float = 1e-4,
         scheduler: str = "cosine",
         warmup_epochs: int = 5,
+        w_charb: float = 1.0,
+        w_grad: float = 0.2,
+        w_ssim: float = 0.1,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -31,13 +41,28 @@ class PANLightningModule(LightningModule):
         self.model = PanModel(scale, in_nc, out_nc, nf, unf, nb, bam)
 
         # Loss function
-        self.criterion = nn.L1Loss()  # TODO: L2 instead?
+        # self.criterion = nn.L1Loss()  # TODO: Add weighted MSE?
+        self.loss_charb = CharbonnierLoss()
+        self.loss_grad = GradientLoss()
 
         # Metrics
         self.train_psnr = torchmetrics.PeakSignalNoiseRatio()
         self.val_psnr = torchmetrics.PeakSignalNoiseRatio()
         self.train_ssim = torchmetrics.StructuralSimilarityIndexMeasure()
         self.val_ssim = torchmetrics.StructuralSimilarityIndexMeasure()
+
+    def criterion(self, sr: torch.Tensor, hr: torch.Tensor) -> torch.Tensor:
+        """Weighted sum of losses"""
+        loss = 0.0
+        if self.hparams.w_charb:
+            loss = loss + self.hparams.w_charb * self.loss_charb(sr, hr)
+        if self.hparams.w_grad:
+            loss = loss + self.hparams.w_grad * self.loss_grad(sr, hr)
+        if self.hparams.w_ssim:
+            # SSIM as loss
+            ssim = self.train_ssim(sr, hr)
+            loss = loss + self.hparams.w_ssim * (1.0 - ssim)
+        return loss
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert x.dtype == torch.float32 and torch.isfinite(x).all()

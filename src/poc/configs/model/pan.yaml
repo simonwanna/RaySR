@@ -16,3 +16,8 @@ model:
   weight_decay: 1e-4
   scheduler: cosine
   warmup_epochs: 5
+
+  # Loss weights
+  w_charb: 1.0
+  w_grad: 0.2
+  w_ssim: 0.1

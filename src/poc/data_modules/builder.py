@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import drjit as dr
 import numpy as np
 import sionna
 from sionna.rt import PlanarArray, Transmitter
+
+dr.set_flag(dr.JitFlag.Debug, True)
 
 
 @dataclass(frozen=True)

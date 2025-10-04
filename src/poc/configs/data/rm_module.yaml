@@ -3,11 +3,14 @@ rm_module:
   _target_: poc.data_modules.rm_module.RadioMapDataModule
 
   # Data loading
-  batch_size: 2
+  batch_size: 16
   num_workers: 4
   pin_memory: false
   train_split: 0.8
   val_split: 0.2
-  dataset_path: ${data_dir}  # change data_dir in the main config file
+  dataset_path: ${data_dir}/train_val  # change data_dir in the main config file
   db_floor: ${db_floor}
   db_ceiling: ${db_ceiling}
+
+
+# used for taining...

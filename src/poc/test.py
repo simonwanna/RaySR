@@ -56,17 +56,15 @@ def save_result(
     )
 
 
-@hydra.main(version_base=None, config_path="configs/test", config_name="test")
+@hydra.main(version_base=None, config_path="configs", config_name="config")
 def test(cfg: DictConfig) -> None:
     print("Configuration:")
     print(OmegaConf.to_yaml(cfg))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset = SuperResolutionDataset(
-        [
-            os.path.join(cfg.test.data_dir, f)
-            for f in sorted(os.listdir(cfg.test.data_dir))
-            if f.startswith("sample_") and f.endswith(".pt")
-        ]
+        [os.path.join(cfg.test.data_dir, f) for f in sorted(os.listdir(cfg.test.data_dir)) if f.endswith(".pt")],
+        db_floor=cfg.test.db_floor,
+        db_ceiling=cfg.test.db_ceiling,
     )
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
 
