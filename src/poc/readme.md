@@ -8,7 +8,8 @@ It leverages [Hydra](https://hydra.cc/) for configuration and [Lightning](https:
 
 ## 📦 Setup
 
-Same as project.
+Same as project. \
+Run `uv sync` to install/update environment.
 
 ---
 
@@ -32,10 +33,6 @@ uv run generate
 ```
 
 - **Config:** `configs/data/radio_maps.yaml`
-- **Override example:**  
-    ```sh
-    uv run generate data.n_samples=50 data.scene_name=munich
-    ```
 - **Output:** `.pt` files in the directory specified by `data.dataset_path`.
 
 ---
@@ -94,6 +91,7 @@ uv run src/poc/visualize.py --results_dir outputs/results
 ## 🛠️ TODO
 
 - [ ] Fix: Model output too similar to low-res input
+- [ ] Add larger scenes (using Blender)
 - [ ] Add WandB logging
 - [ ] Multiprocessing for data generation
 - [ ] Data augmentation (flip/rotate, etc.)

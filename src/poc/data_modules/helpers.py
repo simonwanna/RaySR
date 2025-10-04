@@ -8,6 +8,11 @@ def standarize_img(img: torch.Tensor) -> torch.Tensor:
     return img
 
 
+def normalize_img(img: torch.Tensor, img_mean: float, img_std: float) -> torch.Tensor:
+    img = img * (img_std + 1e-16) + img_mean
+    return img
+
+
 def visualize_sample(sample_path: str) -> None:
     sample = torch.load(sample_path, weights_only=False)
 

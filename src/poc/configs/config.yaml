@@ -1,6 +1,9 @@
 defaults:
   - model: pan
-  - data: radio_maps
+  - data/data_common
+  - data/generator
+  - data/transmitter
+  - data/rm_module
   - trainer: default
   - _self_
 
@@ -15,4 +18,4 @@ work_dir: ${oc.env:PWD}
 
 # Paths
 data_dir: ${work_dir}/src/poc/processed_data/train_val
-save_dir: ${work_dir}/outputs
+save_dir: ${work_dir}/outputs   # where to save logs, checkpoints, etc.

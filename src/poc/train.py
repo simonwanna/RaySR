@@ -12,7 +12,7 @@ def train(cfg: DictConfig) -> None:
     L.seed_everything(cfg.seed, workers=True)
 
     # Instantiate data module and model
-    datamodule = hydra.utils.instantiate(cfg.data)
+    datamodule = hydra.utils.instantiate(cfg.rm_module)
     model = hydra.utils.instantiate(cfg.model)
 
     # Instantiate trainer

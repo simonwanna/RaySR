@@ -108,7 +108,7 @@ class PANLightningModule(LightningModule):
 
 
 class PanModel(nn.Module):
-    """Borrowed with modifications from super image"""
+    """Borrowed with modifications from https://github.com/eugenesiow/super-image"""
 
     def __init__(self, scale: int, in_nc: int, out_nc: int, nf: int, unf: int, nb: int, bam: bool):
         super(PanModel, self).__init__()
@@ -170,30 +170,3 @@ class PanModel(nn.Module):
         ilr = F.interpolate(x, scale_factor=self.scale, mode="bilinear", align_corners=False)
         out = out + ilr
         return out
-
-    # TODO: remove?
-    def load_state_dict(self, state_dict: dict, strict: bool = True) -> None:
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name in own_state:
-                if isinstance(param, nn.Parameter):
-                    param = param.data
-                try:
-                    own_state[name].copy_(param)
-                except Exception:
-                    if name.find("tail") >= 0:
-                        print("Replace pre-trained upsampler to new one...")
-                    else:
-                        raise RuntimeError(
-                            f"While copying the parameter named {name}, "
-                            f"whose dimensions in the model are {own_state[name].size()} and "
-                            f"whose dimensions in the checkpoint are {param.size()}."
-                        )
-            elif strict:
-                if name.find("tail") == -1:
-                    raise KeyError(f'unexpected key "{name}" in state_dict')
-
-        if strict:
-            missing = set(own_state.keys()) - set(state_dict.keys())
-            if len(missing) > 0:
-                raise KeyError(f'missing keys in state_dict: "{missing}"')

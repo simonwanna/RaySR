@@ -38,11 +38,29 @@ class RadioMapDataGenerator:
     Uses Sionna's RadioMapSolver to compute radio maps.
     """
 
-    def __init__(self, scene: "Scene", metric_type: Literal["path_gain", "rss", "sinr"] = "path_gain"):
+    def __init__(
+        self,
+        metric_type: Literal["path_gain", "rss", "sinr"] = "path_gain",
+        n_samples: int = 100,
+        dataset_path: str = "",
+        naming_convention: str = "sample_{:04d}.pt",
+        to_db: bool = True,
+        db_floor: float = -150.0,
+        scene: "Scene" = None,
+    ) -> None:
+        self.metric_type = metric_type
+        self.n_samples = n_samples
+        self.dataset_path = dataset_path
+        self.naming_convention = naming_convention
+        self.to_db = to_db
+        self.db_floor = db_floor
+        self._setup(scene)
+
+    def _setup(self, scene: "Scene") -> None:
+        """Setup the data generator with the given scene"""
         self.scene = scene
         self.builder = SceneTransmitterBuilder(scene)
         self.rm_solver = RadioMapSolver()
-        self.metric_type = metric_type
 
     def _extract_metric(self, radio_map: "PlanarRadioMap") -> torch.Tensor:
         """Extract the specified metric from the radio map"""
@@ -54,6 +72,14 @@ class RadioMapDataGenerator:
             return radio_map.sinr.torch().cpu()
         else:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
+
+    @staticmethod
+    def _apply_db_conversion(radio_map: torch.Tensor, floor_db: float = -150.0) -> torch.Tensor:
+        """Apply dB conversion to the radio map"""
+        radio_map_db = 10.0 * torch.log10(torch.clamp(radio_map, min=1e-15))
+        if floor_db is not None:
+            radio_map_db = torch.clamp(radio_map_db, min=floor_db)
+        return radio_map_db
 
     def _generate_sample(self, sample_id: int, config: TransmitterConfig) -> SuperResolutionDataSample:
         """Generate a single super-resolution data sample"""
@@ -99,6 +125,13 @@ class RadioMapDataGenerator:
         else:
             map_hr = metric_hr
 
+        if self.to_db:
+            if self.metric_type == "path_gain" or self.metric_type == "sinr":
+                map_lr = self._apply_db_conversion(map_lr, self.db_floor)
+                map_hr = self._apply_db_conversion(map_hr, self.db_floor)
+            elif self.metric_type == "rss":  # TODO: implement dB conversion for RSS (dBm)
+                raise NotImplementedError("dB conversion for RSS not implemented yet")
+
         # Create sample
         sample = SuperResolutionDataSample(
             sample_id=sample_id,
@@ -115,23 +148,20 @@ class RadioMapDataGenerator:
 
     def generate_dataset(
         self,
-        n_samples: int,
-        save_dir: str,
         base_config: TransmitterConfig,
-        naming_convention: str = "sample_{:04d}.pt",
         show_progress: bool = True,
     ) -> None:
         """Generate multiple super-resolution data samples"""
 
-        logging.info(f"Generating {n_samples} super-resolution samples...")
+        logging.info(f"Generating {self.n_samples} super-resolution samples...")
         logging.info(f"Metric: {self.metric_type}, Scale: {base_config.scale}x")
         logging.info(f"LR cell: {base_config.lr_cell_size}, HR cell: {base_config.hr_cell_size}")
         logging.info(f"Coverage: {base_config.coverage_size}x{base_config.coverage_size}m")
 
-        os.makedirs(save_dir, exist_ok=True)
-        logging.info(f"Samples will be saved to: {save_dir}")
+        os.makedirs(self.dataset_path, exist_ok=True)
+        logging.info(f"Samples will be saved to: {self.dataset_path}")
 
-        iterator = tqdm(range(n_samples), desc="Generating samples") if show_progress else range(n_samples)
+        iterator = tqdm(range(self.n_samples), desc="Generating samples") if show_progress else range(self.n_samples)
 
         for i in iterator:
             # Create config with unique seed for each sample
@@ -140,7 +170,7 @@ class RadioMapDataGenerator:
             config = replace(base_config, seed=i + 200)
 
             sample = self._generate_sample(i + 1, config)
-            self._save_data(sample, save_dir, naming=naming_convention)
+            self._save_data(sample, self.dataset_path, naming=self.naming_convention)
 
             if show_progress and isinstance(iterator, tqdm):
                 iterator.set_postfix(
@@ -150,7 +180,7 @@ class RadioMapDataGenerator:
                     }
                 )
 
-        logger.info(f"Dataset generation complete: {n_samples} samples saved to {save_dir}")
+        logger.info(f"Dataset generation complete: {self.n_samples} samples saved to {self.dataset_path}")
 
     @staticmethod
     def _save_data(sample: SuperResolutionDataSample, save_dir: str, naming: str) -> None:

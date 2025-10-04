@@ -25,6 +25,7 @@
 2. **Sync environment**: ``uv sync``
 3. **Run commands**: ``uv run <command>``
 4. **(Dev)**: Install pre-commit hooks: ``pre-commit install``
+- Might need `LLVM` installed... 
 
 ## Environment Instructions
 - To add dependencies, add them to `pyproject.toml` and run `uv sync`.

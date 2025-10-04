@@ -1,4 +1,4 @@
-"""Modelling base class and utilities."""
+"""Modelling base class and utilities. Credit: https://github.com/eugenesiow/super-image"""
 
 import functools
 import logging

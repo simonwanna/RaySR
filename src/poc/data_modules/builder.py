@@ -79,7 +79,8 @@ class SceneTransmitterBuilder:
         for i in range(1, max_scan + 1):
             self._safe_remove(f"tx_{i}")
 
-    def _generate_grid_positions(self, config: TransmitterConfig) -> Tuple[List[List[float]], dict]:
+    @staticmethod
+    def _generate_grid_positions(config: TransmitterConfig) -> Tuple[List[List[float]], dict]:
         """Generate transmitter positions and return grid info"""
         grid_dim = int(np.ceil(np.sqrt(config.n_tx)))
 

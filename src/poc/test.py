@@ -63,15 +63,15 @@ def test(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dataset = SuperResolutionDataset(
         [
-            os.path.join(cfg.data_dir, f)
-            for f in sorted(os.listdir(cfg.data_dir))
+            os.path.join(cfg.test.data_dir, f)
+            for f in sorted(os.listdir(cfg.test.data_dir))
             if f.startswith("sample_") and f.endswith(".pt")
         ]
     )
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
 
-    model = load_model(cfg.checkpoint, device)
-    scale = cfg.scale
+    model = load_model(cfg.test.checkpoint, device)
+    scale = cfg.test.scale
 
     all_metrics = []
 
@@ -90,7 +90,7 @@ def test(cfg: DictConfig) -> None:
             "bicubic": compute_metrics(interp, hr),
         }
 
-        save_result(cfg.save_dir, sample_id, lr, hr, pred, interp, metrics)
+        save_result(cfg.test.save_dir, sample_id, lr, hr, pred, interp, metrics)
         all_metrics.append({"sample_id": sample_id, **metrics})
 
     avg_model_psnr = sum(m["model"]["psnr"] for m in all_metrics) / len(all_metrics)

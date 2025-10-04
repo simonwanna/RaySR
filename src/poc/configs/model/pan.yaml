@@ -3,7 +3,7 @@ model:
   _target_: poc.models.pan.PANLightningModule
   
   # Model architecture
-  scale: 4      # Upscaling factor
+  scale: 2      # Upscaling factor
   in_nc: 1      # Single channel radio maps
   out_nc: 1     # Single channel output
   nf: 40        # Number of features
