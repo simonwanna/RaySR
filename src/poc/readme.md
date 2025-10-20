@@ -35,6 +35,13 @@ uv run generate
 - **Config:** `configs/data/radio_maps.yaml`
 - **Output:** `.pt` files in the directory specified by `data.dataset_path`.
 
+- You can loop over the scenes creating n_samples per scene in one go:
+    ```bash
+    for scene in munich florence san_francisco etoile; do
+        uv run generate scene_name="$scene";
+    done
+    ```
+
 ---
 
 ## 🏋️ Training
@@ -47,6 +54,12 @@ uv run train
 
 - **Config:** `configs/model/pan.yaml`, `configs/trainer/default.yaml`
 - **Output:** Checkpoints and logs in the Hydra run directory.
+
+- To enable Weights & Biases logging (metrics + validation image triplets each epoch), use the WandB trainer config:
+  ```sh
+  uv run train trainer=wandb
+  ```
+  Optionally set `WANDB_PROJECT`/`WANDB_ENTITY` env vars. Images are logged as triples: `[LR (nearest-upsampled) | SR (pred) | HR]`.
 
 ---
 
@@ -90,14 +103,13 @@ uv run src/poc/visualize.py --results_dir outputs/results
 
 ## 🛠️ TODO
 
-- [ ] Fix: Model output too similar to low-res input
+- [x] Fix: Model output too similar to low-res input
 - [ ] Add larger scenes (using Blender)
-- [ ] Add WandB logging
-- [ ] Multiprocessing for data generation
+- [x] Add WandB logging (with image logging)
+- [ ] Multiprocessing for data generation (maybe not needed? Pretty fast already)
 - [ ] Data augmentation (flip/rotate, etc.)
-- [ ] Warn if transmitters are placed too close/outside scene
-- [ ] Save checkpoints in Hydra job folder
-- [ ] Fix image mirroring bug in generation
-- [ ] Add multi-channel support
-
-
+- [ ] Warn if transmitters are placed too close/outside scene (current error handling enough?)
+- [ ] Prevent transmitters from being placed inside buildings etc.
+- [x] Save checkpoints in Hydra job folder
+- [x] Fix image mirroring bug in generation
+- [ ] Add multi-channel support (e.g., where buildings are / mask for where there are no signal)
