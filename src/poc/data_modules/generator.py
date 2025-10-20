@@ -74,9 +74,11 @@ class RadioMapDataGenerator:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
 
     @staticmethod
-    def _apply_db_conversion(radio_map: torch.Tensor, floor_db: float = -150.0) -> torch.Tensor:
+    def _apply_db_conversion(radio_map: torch.Tensor, floor_db: float = -150.0, dbm: bool = False) -> torch.Tensor:
         """Apply dB conversion to the radio map"""
         radio_map_db = 10.0 * torch.log10(torch.clamp(radio_map, min=1e-15))
+        if dbm:
+            radio_map_db += 30.0  # Convert to dBm
         if floor_db is not None:
             radio_map_db = torch.clamp(radio_map_db, min=floor_db)
         return radio_map_db
@@ -129,8 +131,9 @@ class RadioMapDataGenerator:
             if self.metric_type == "path_gain" or self.metric_type == "sinr":
                 map_lr = self._apply_db_conversion(map_lr, self.db_floor)
                 map_hr = self._apply_db_conversion(map_hr, self.db_floor)
-            elif self.metric_type == "rss":  # TODO: implement dB conversion for RSS (dBm)
-                raise NotImplementedError("dB conversion for RSS not implemented yet")
+            elif self.metric_type == "rss":
+                map_lr = self._apply_db_conversion(map_lr, self.db_floor, dbm=True)
+                map_hr = self._apply_db_conversion(map_hr, self.db_floor, dbm=True)
 
         # Create sample
         sample = SuperResolutionDataSample(

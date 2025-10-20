@@ -4,5 +4,3 @@ frequency: 3.5e9
 
 db_floor: -150.0  # dB floor for path_gain and sinr, None for no floor
 db_ceiling: -50.0  # dB ceiling for path_gain and sinr, None for no ceiling
-
-# TODO: add support for a list of scenes

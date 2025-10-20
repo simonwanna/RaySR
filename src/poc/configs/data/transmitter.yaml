@@ -2,13 +2,13 @@
 transmitter:
   _target_: poc.data_modules.builder.TransmitterConfig
   n_tx: 2
-  scale: 2
+  scale: 2  # downscaling factor
   coverage_size: 200.0  # how big area you cover
-  hr_grid_size: 512
-  grid_randomization: 0
-  center_range: [[-100, 100], [-100, 100]]
+  hr_grid_size: 512  # number of pixels in high-res grid
+  grid_randomization: 0  # [0, 1] randomization of the transmitters on the grid
+  center_range: [[-100, 100], [-100, 100]]  # grid center will be sampled from this range
   tx_height: 45.0
-  tx_power_dbm: 44.0  # Doesn't seem to do anything..? 
+  tx_power_dbm: 44.0
   # PlanarArray
   tx_array_pattern: iso  # [iso, dipole, hw_dipole, tr38901]
   polarization: V  # [V | H | VH | cross]
