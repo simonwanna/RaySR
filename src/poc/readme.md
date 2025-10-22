@@ -108,8 +108,8 @@ uv run src/poc/visualize.py --results_dir outputs/results
 - [x] Add WandB logging (with image logging)
 - [ ] Multiprocessing for data generation (maybe not needed? Pretty fast already)
 - [ ] Data augmentation (flip/rotate, etc.)
-- [ ] Warn if transmitters are placed too close/outside scene (current error handling enough?)
+- [x] Set scene boundary for transmitter placement
 - [ ] Prevent transmitters from being placed inside buildings etc.
 - [x] Save checkpoints in Hydra job folder
 - [x] Fix image mirroring bug in generation
-- [ ] Add multi-channel support (e.g., where buildings are / mask for where there are no signal)
+- [ ] Add multi-channel support (e.g., z value for buildings / mask for where there are no signal)

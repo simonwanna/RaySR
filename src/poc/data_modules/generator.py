@@ -83,11 +83,13 @@ class RadioMapDataGenerator:
             radio_map_db = torch.clamp(radio_map_db, min=floor_db)
         return radio_map_db
 
-    def _generate_sample(self, sample_id: int, config: TransmitterConfig) -> SuperResolutionDataSample:
+    def _generate_sample(
+        self, sample_id: int, config: TransmitterConfig, scene_corners: tuple
+    ) -> SuperResolutionDataSample:
         """Generate a single super-resolution data sample"""
 
         # Build transmitters in scene
-        tx_positions, grid_info = self.builder.build(config)
+        tx_positions, grid_info = self.builder.build(config, scene_corners)
         tx_positions = torch.tensor(tx_positions)
         cx, cy = grid_info["center_x"], grid_info["center_y"]
 
@@ -164,6 +166,9 @@ class RadioMapDataGenerator:
         os.makedirs(self.dataset_path, exist_ok=True)
         logging.info(f"Samples will be saved to: {self.dataset_path}")
 
+        # Get boundaries of the scene
+        scene_corners = self._get_scene_boundary(base_config.margin)
+
         iterator = tqdm(range(self.n_samples), desc="Generating samples") if show_progress else range(self.n_samples)
 
         for i in iterator:
@@ -172,7 +177,7 @@ class RadioMapDataGenerator:
 
             config = replace(base_config, seed=i + 200)
 
-            sample = self._generate_sample(i + 1, config)
+            sample = self._generate_sample(i + 1, config, scene_corners)
             self._save_data(sample, self.dataset_path, naming=self.naming_convention)
 
             if show_progress and isinstance(iterator, tqdm):
@@ -184,6 +189,22 @@ class RadioMapDataGenerator:
                 )
 
         logger.info(f"Dataset generation complete: {self.n_samples} samples saved to {self.dataset_path}")
+
+    def _get_scene_boundary(self, margin: float) -> tuple:
+        """Get the boundary of the scene for transmitter placement"""
+        bbox = self.scene.mi_scene.bbox()
+        x_min = bbox.min.x
+        x_max = bbox.max.x
+        y_min = bbox.min.y
+        y_max = bbox.max.y
+
+        # add margin
+        x_min += margin
+        x_max -= margin
+        y_min += margin
+        y_max -= margin
+
+        return ((x_min, x_max), (y_min, y_max))
 
     @staticmethod
     def _save_data(sample: SuperResolutionDataSample, save_dir: str, naming: str) -> None:
