@@ -18,13 +18,11 @@ class TransmitterConfig:
     n_tx: int
     scale: int  # Super-resolution scale factor (e.g., 5 for 10m->2m)
     coverage_size: float  # Square coverage area size in meters (e.g., 500.0)
-    hr_grid_size: int = 64
+    hr_grid_size: int = 512
 
     # Grid placement (evenly spaced grid with optional randomization)
     grid_randomization: float = 0.0  # 0.0 = perfect grid, 1.0 = fully random within cells
-
-    # Area for random grid center placement
-    center_range: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+    margin: float = 30.0  # margin to leave from scene borders when placing transmitters
 
     # TX parameters
     tx_power_dbm: float = 44.0
@@ -83,15 +81,19 @@ class SceneTransmitterBuilder:
             self._safe_remove(f"tx_{i}")
 
     @staticmethod
-    def _generate_grid_positions(config: TransmitterConfig) -> Tuple[List[List[float]], dict]:
+    def _generate_grid_positions(config: TransmitterConfig, scene_corners: tuple) -> Tuple[List[List[float]], dict]:
         """Generate transmitter positions and return grid info"""
         grid_dim = int(np.ceil(np.sqrt(config.n_tx)))
 
         # Determine grid center
-        if config.center_range is not None:
-            (xmin, xmax), (ymin, ymax) = config.center_range
-            center_x = np.random.uniform(xmin, xmax)
-            center_y = np.random.uniform(ymin, ymax)
+        if scene_corners is not None:
+            (x_min, x_max), (y_min, y_max) = scene_corners
+            x_min += config.coverage_size / 2
+            x_max -= config.coverage_size / 2
+            y_min += config.coverage_size / 2
+            y_max -= config.coverage_size / 2
+            center_x = np.random.uniform(x_min, x_max)
+            center_y = np.random.uniform(y_min, y_max)
         else:
             center_x, center_y = 0.0, 0.0
 
@@ -135,7 +137,7 @@ class SceneTransmitterBuilder:
 
         return positions, grid_info
 
-    def build(self, config: TransmitterConfig) -> List[List[float]]:
+    def build(self, config: TransmitterConfig, scene_corners: tuple) -> List[List[float]]:
         """Build transmitters on the scene"""
         config = config.validate()
 
@@ -154,7 +156,7 @@ class SceneTransmitterBuilder:
         )
 
         # Generate transmitter positions
-        tx_positions, grid_info = self._generate_grid_positions(config)
+        tx_positions, grid_info = self._generate_grid_positions(config, scene_corners)
 
         # Create transmitters
         for i, pos in enumerate(tx_positions, start=1):
