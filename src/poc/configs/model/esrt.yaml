@@ -1,0 +1,15 @@
+# @package _global_
+model:
+  _target_: poc.models.esrt.ESRTLightningModule
+  scale: 2
+  n_feats: 32
+  n_blocks: 1
+  kernel_size: 3
+  learning_rate: 1e-4
+  weight_decay: 1e-4
+  scheduler: cosine
+  warmup_epochs: 5
+  w_charb: 1.0
+  w_grad: 0.2
+  w_ssim: 0.1
+  num_val_log_images: 4

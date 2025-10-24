@@ -1,5 +1,5 @@
 defaults:
-  - model: pan
+  - model: esrt
   - data/data_common
   - data/generator
   - data/transmitter

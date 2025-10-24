@@ -93,6 +93,8 @@ class RadioMapDataGenerator:
         tx_positions = torch.tensor(tx_positions)
         cx, cy = grid_info["center_x"], grid_info["center_y"]
 
+        # TODO: add new feature for building height
+
         # Generate LOW RESOLUTION radio map
         rm_lr = self.rm_solver(
             self.scene,

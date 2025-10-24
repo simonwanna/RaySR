@@ -2,7 +2,7 @@
 trainer:
   _target_: lightning.Trainer
 
-  accelerator: cpu
+  accelerator: gpu
   devices: 1
   precision: 32
   num_sanity_val_steps: 1
@@ -22,7 +22,7 @@ trainer:
     save_dir: ${save_dir}
     name: ${now:%Y-%m-%d_%H-%M-%S}
     tags:
-      - pan
+      - ${hydra:runtime.choices.model}
       - scale_${model.scale}
     log_model: true
 
@@ -30,7 +30,7 @@ trainer:
   callbacks:
     - _target_: lightning.pytorch.callbacks.ModelCheckpoint
       dirpath: ${hydra:run.dir}/checkpoints
-      filename: pan-{epoch:02d}-{val_loss:.3f}
+      filename: ${hydra:runtime.choices.model}-{epoch:02d}-{val_loss:.3f}
       monitor: val_loss
       save_top_k: 3
       mode: min
