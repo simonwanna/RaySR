@@ -11,3 +11,7 @@ generator:
   naming_convention: ${scene_name}_sample  # + _{sample.sample_id:04d}.pt
   to_db: true  # Convert to dB scale before saving
   db_floor: ${db_floor}  # dB floor for path_gain and sinr, None for no floor
+
+  min_object_height: 10.0  # Minimum object height to consider for transmitter placement (meters)
+  step_size_power: 10.0  # Step size for grid discretization (meters)
+  step_size_exponent: -1.0  # Example: step_size = step_size_power ** step_size_exponent
