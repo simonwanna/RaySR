@@ -19,5 +19,8 @@ model:
 
   # Loss weights
   w_charb: 1.0
-  w_grad: 0.2
-  w_ssim: 0.1
+  w_grad: 0.3
+  w_ssim: 0.0  #0.1
+
+  # Logging
+  num_val_log_images: 9

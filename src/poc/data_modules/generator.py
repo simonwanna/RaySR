@@ -3,7 +3,9 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 import torch
+from scipy import ndimage as ndi
 from sionna.rt import RadioMapSolver
 from tqdm import tqdm
 
@@ -47,6 +49,9 @@ class RadioMapDataGenerator:
         to_db: bool = True,
         db_floor: float = -150.0,
         scene: "Scene" = None,
+        min_object_height: float = 10.0,
+        step_size_power: float = 10.0,
+        step_size_exponent: float = -1.0,
     ) -> None:
         self.metric_type = metric_type
         self.n_samples = n_samples
@@ -54,13 +59,80 @@ class RadioMapDataGenerator:
         self.naming_convention = naming_convention
         self.to_db = to_db
         self.db_floor = db_floor
+        self.min_object_height = min_object_height
+        self.step_size_power = step_size_power
+        self.step_size_exponent = step_size_exponent
+        self.tx_grid_info = None
         self._setup(scene)
+        self._generate_tx_grid_info()
 
     def _setup(self, scene: "Scene") -> None:
         """Setup the data generator with the given scene"""
         self.scene = scene
         self.builder = SceneTransmitterBuilder(scene)
         self.rm_solver = RadioMapSolver()
+
+    def _generate_tx_grid_info(self) -> None:
+        """Generate transmitter grid info based on scene geometry"""
+
+        # Obtain scene bounding box
+        scene_bbox = self.scene.mi_scene.bbox()
+        xmin, xmax = float(scene_bbox.min.x), float(scene_bbox.max.x)
+        ymin, ymax = float(scene_bbox.min.y), float(scene_bbox.max.y)
+
+        # Determine grid resolution
+        step_size = self.step_size_power**self.step_size_exponent
+        num_x_points = int(np.ceil((xmax - xmin) / step_size)) + 1
+        num_y_points = int(np.ceil((ymax - ymin) / step_size)) + 1
+
+        height_matrix = np.full((num_y_points, num_x_points), np.nan, dtype=float)
+
+        # Determine valid objects based on min height
+        valid_object_bboxes = []
+        for obj in tqdm(self.scene.objects.values(), desc="Extracting valid scene objects"):
+            if getattr(obj, "mi_mesh", None) and obj.name not in ["ground", "Terrain", "Plane", "floor"]:
+                if obj.mi_mesh.bbox().extents()[2] >= self.min_object_height:
+                    valid_object_bboxes.append(obj.mi_mesh.bbox())
+
+        if len(valid_object_bboxes) == 0:
+            logger.warning("Scene contains no valid objects.")
+            return
+
+        # Populate height matrix
+        for bb in tqdm(valid_object_bboxes, desc="Generating height map"):
+            col_idx_min = int(np.ceil((float(bb.min.x) - xmin) / step_size))
+            col_idx_max = int(np.floor((float(bb.max.x) - xmin) / step_size))
+            row_idx_min = int(np.ceil((float(bb.min.y) - ymin) / step_size))
+            row_idx_max = int(np.floor((float(bb.max.y) - ymin) / step_size))
+
+            col_idx_min = max(col_idx_min, 0)
+            row_idx_min = max(row_idx_min, 0)
+            col_idx_max = min(col_idx_max, num_x_points - 1)
+            row_idx_max = min(row_idx_max, num_y_points - 1)
+
+            if col_idx_min > col_idx_max or row_idx_min > row_idx_max:
+                continue
+
+            block = height_matrix[row_idx_min : (row_idx_max + 1), col_idx_min : (col_idx_max + 1)]
+            np.fmax(block, float(bb.max.z), out=block)
+
+        # Generate "nearest valid neighbor" indexes for NaN values
+        valid = ~np.isnan(height_matrix)
+        nearest_idx = ndi.distance_transform_edt(~valid, return_distances=False, return_indices=True)
+
+        tx_grid_info = {
+            "xmin": xmin,
+            "xmax": xmax,
+            "ymin": ymin,
+            "ymax": ymax,
+            "num_x_points": num_x_points,
+            "num_y_points": num_y_points,
+            "step_size": step_size,
+            "height_matrix": height_matrix,
+            "nearest_idx": nearest_idx,
+        }
+
+        self.tx_grid_info = tx_grid_info
 
     def _extract_metric(self, radio_map: "PlanarRadioMap") -> torch.Tensor:
         """Extract the specified metric from the radio map"""
@@ -74,18 +146,24 @@ class RadioMapDataGenerator:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
 
     @staticmethod
-    def _apply_db_conversion(radio_map: torch.Tensor, floor_db: float = -150.0) -> torch.Tensor:
+    def _apply_db_conversion(radio_map: torch.Tensor, floor_db: float = -150.0, dbm: bool = False) -> torch.Tensor:
         """Apply dB conversion to the radio map"""
         radio_map_db = 10.0 * torch.log10(torch.clamp(radio_map, min=1e-15))
+        if dbm:
+            radio_map_db += 30.0  # Convert to dBm
         if floor_db is not None:
             radio_map_db = torch.clamp(radio_map_db, min=floor_db)
         return radio_map_db
 
-    def _generate_sample(self, sample_id: int, config: TransmitterConfig) -> SuperResolutionDataSample:
+    def _generate_sample(
+        self, sample_id: int, config: TransmitterConfig, scene_corners: tuple
+    ) -> SuperResolutionDataSample:
         """Generate a single super-resolution data sample"""
 
+        # TODO: use min_tx_height and more...
+
         # Build transmitters in scene
-        tx_positions, grid_info = self.builder.build(config)
+        tx_positions, grid_info = self.builder.build(config, scene_corners, self.tx_grid_info)
         tx_positions = torch.tensor(tx_positions)
         cx, cy = grid_info["center_x"], grid_info["center_y"]
 
@@ -129,8 +207,9 @@ class RadioMapDataGenerator:
             if self.metric_type == "path_gain" or self.metric_type == "sinr":
                 map_lr = self._apply_db_conversion(map_lr, self.db_floor)
                 map_hr = self._apply_db_conversion(map_hr, self.db_floor)
-            elif self.metric_type == "rss":  # TODO: implement dB conversion for RSS (dBm)
-                raise NotImplementedError("dB conversion for RSS not implemented yet")
+            elif self.metric_type == "rss":
+                map_lr = self._apply_db_conversion(map_lr, self.db_floor, dbm=True)
+                map_hr = self._apply_db_conversion(map_hr, self.db_floor, dbm=True)
 
         # Create sample
         sample = SuperResolutionDataSample(
@@ -161,6 +240,9 @@ class RadioMapDataGenerator:
         os.makedirs(self.dataset_path, exist_ok=True)
         logging.info(f"Samples will be saved to: {self.dataset_path}")
 
+        # Get boundaries of the scene
+        scene_corners = self._get_scene_boundary(base_config.margin)
+
         iterator = tqdm(range(self.n_samples), desc="Generating samples") if show_progress else range(self.n_samples)
 
         for i in iterator:
@@ -169,7 +251,7 @@ class RadioMapDataGenerator:
 
             config = replace(base_config, seed=i + 200)
 
-            sample = self._generate_sample(i + 1, config)
+            sample = self._generate_sample(i + 1, config, scene_corners)
             self._save_data(sample, self.dataset_path, naming=self.naming_convention)
 
             if show_progress and isinstance(iterator, tqdm):
@@ -181,6 +263,22 @@ class RadioMapDataGenerator:
                 )
 
         logger.info(f"Dataset generation complete: {self.n_samples} samples saved to {self.dataset_path}")
+
+    def _get_scene_boundary(self, margin: float) -> tuple:
+        """Get the boundary of the scene for transmitter placement"""
+        bbox = self.scene.mi_scene.bbox()
+        x_min = bbox.min.x
+        x_max = bbox.max.x
+        y_min = bbox.min.y
+        y_max = bbox.max.y
+
+        # add margin
+        x_min += margin
+        x_max -= margin
+        y_min += margin
+        y_max -= margin
+
+        return ((x_min, x_max), (y_min, y_max))
 
     @staticmethod
     def _save_data(sample: SuperResolutionDataSample, save_dir: str, naming: str) -> None:

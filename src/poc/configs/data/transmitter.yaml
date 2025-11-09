@@ -1,14 +1,15 @@
 # @package _global_
 transmitter:
   _target_: poc.data_modules.builder.TransmitterConfig
-  n_tx: 2
-  scale: 2
-  coverage_size: 200.0  # how big area you cover
-  hr_grid_size: 512
-  grid_randomization: 0
-  center_range: [[-100, 100], [-100, 100]]
-  tx_height: 45.0
-  tx_power_dbm: 44.0  # Doesn't seem to do anything..? 
+  n_tx: 1
+  scale: 2  # downscaling factor
+  coverage_size: 160.0  # how big area you cover
+  hr_grid_size: 512  # number of pixels in high-res grid
+  grid_randomization: 1.0 # [0, 1.0] randomization of the transmitters on the grid
+  tx_default_height: 45.0
+  tx_power_dbm: 44.0
   # PlanarArray
   tx_array_pattern: iso  # [iso, dipole, hw_dipole, tr38901]
   polarization: V  # [V | H | VH | cross]
+  margin: 30.0  # margin to leave from scene borders when placing transmitters
+  tx_height_margin: 5.0

@@ -12,16 +12,17 @@ def generate_data(cfg: DictConfig) -> None:
     logging.info(OmegaConf.to_yaml(cfg))
 
     # Load scene; TODO: set max grid size based on scene
-    if cfg.scene_name == "empty":
-        scene = load_scene()
-    elif cfg.scene_name == "etoile":
-        scene = load_scene(sionna.rt.scene.etoile)
+    # merge_shapes=False to determine seperate object heights
+    # if cfg.scene_name == "empty":
+    #     scene = load_scene()
+    if cfg.scene_name == "etoile":
+        scene = load_scene(sionna.rt.scene.etoile, merge_shapes=False)
     elif cfg.scene_name == "san_francisco":
-        scene = load_scene(sionna.rt.scene.san_francisco)
+        scene = load_scene(sionna.rt.scene.san_francisco, merge_shapes=False)
     elif cfg.scene_name == "munich":
-        scene = load_scene(sionna.rt.scene.munich)
+        scene = load_scene(sionna.rt.scene.munich, merge_shapes=False)
     elif cfg.scene_name == "florence":
-        scene = load_scene(sionna.rt.scene.florence)
+        scene = load_scene(sionna.rt.scene.florence, merge_shapes=False)
     else:
         raise ValueError(f"Unknown scene: {cfg.scene_name}")
 

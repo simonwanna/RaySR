@@ -5,7 +5,7 @@ defaults:
   - data/transmitter
   - data/rm_module
   - trainer: default
-  - test: default
+  - test: null
   - _self_
 
 # Hydra settings

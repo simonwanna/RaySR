@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-import drjit as dr
+# import drjit as dr
 import numpy as np
 import sionna
 from sionna.rt import PlanarArray, Transmitter
 
-dr.set_flag(dr.JitFlag.Debug, True)
+# dr.set_flag(dr.JitFlag.Debug, True)  # NOTE: use if you get error in san_francisco processing...
 
 
 @dataclass(frozen=True)
@@ -18,19 +18,18 @@ class TransmitterConfig:
     n_tx: int
     scale: int  # Super-resolution scale factor (e.g., 5 for 10m->2m)
     coverage_size: float  # Square coverage area size in meters (e.g., 500.0)
-    hr_grid_size: int = 64
+    hr_grid_size: int = 512
 
     # Grid placement (evenly spaced grid with optional randomization)
     grid_randomization: float = 0.0  # 0.0 = perfect grid, 1.0 = fully random within cells
-
-    # Area for random grid center placement
-    center_range: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+    margin: float = 30.0  # margin to leave from scene borders when placing transmitters
 
     # TX parameters
     tx_power_dbm: float = 44.0
     tx_array_pattern: str = "iso"
     polarization: str = "V"
-    tx_height: float = 45.0
+    tx_default_height: float = 45.0
+    tx_height_margin: float = 5.0
 
     # Reproducibility
     seed: Optional[int] = None
@@ -83,15 +82,19 @@ class SceneTransmitterBuilder:
             self._safe_remove(f"tx_{i}")
 
     @staticmethod
-    def _generate_grid_positions(config: TransmitterConfig) -> Tuple[List[List[float]], dict]:
+    def _generate_grid_positions(config: TransmitterConfig, scene_corners: tuple) -> Tuple[List[List[float]], dict]:
         """Generate transmitter positions and return grid info"""
         grid_dim = int(np.ceil(np.sqrt(config.n_tx)))
 
         # Determine grid center
-        if config.center_range is not None:
-            (xmin, xmax), (ymin, ymax) = config.center_range
-            center_x = np.random.uniform(xmin, xmax)
-            center_y = np.random.uniform(ymin, ymax)
+        if scene_corners is not None:
+            (x_min, x_max), (y_min, y_max) = scene_corners
+            x_min += config.coverage_size / 2
+            x_max -= config.coverage_size / 2
+            y_min += config.coverage_size / 2
+            y_max -= config.coverage_size / 2
+            center_x = np.random.uniform(x_min, x_max)
+            center_y = np.random.uniform(y_min, y_max)
         else:
             center_x, center_y = 0.0, 0.0
 
@@ -130,12 +133,14 @@ class SceneTransmitterBuilder:
                     base_x += rand_x
                     base_y += rand_y
 
-                positions.append([float(base_x), float(base_y), float(config.tx_height)])
+                positions.append([float(base_x), float(base_y), float(config.tx_default_height)])
                 tx_count += 1
 
         return positions, grid_info
 
-    def build(self, config: TransmitterConfig) -> List[List[float]]:
+    def build(
+        self, config: TransmitterConfig, scene_corners: tuple, tx_grid_info: dict = None
+    ) -> tuple[List[List[float]], dict]:
         """Build transmitters on the scene"""
         config = config.validate()
 
@@ -154,11 +159,65 @@ class SceneTransmitterBuilder:
         )
 
         # Generate transmitter positions
-        tx_positions, grid_info = self._generate_grid_positions(config)
+        tx_positions, grid_info = self._generate_grid_positions(config, scene_corners)
 
         # Create transmitters
         for i, pos in enumerate(tx_positions, start=1):
+            # Validate current transmitter position
+            if tx_grid_info is not None:
+                pos = _snap_to_nearest_valid_position(pos, tx_grid_info)
+                pos[2] += config.tx_height_margin
+                tx_positions[i - 1] = pos
+
             name = f"tx_{i}"
             self.scene.add(Transmitter(name=name, position=pos, power_dbm=config.tx_power_dbm, color=(0, 0, 1)))
 
         return tx_positions, grid_info
+
+
+def _world_to_index(x: float, y: float, tx_grid_info: dict) -> tuple[int]:
+    """Convert world position to height map index"""
+    # Retrive grid information
+    xmin = tx_grid_info["xmin"]
+    ymin = tx_grid_info["ymin"]
+    num_x_points = tx_grid_info["num_x_points"]
+    num_y_points = tx_grid_info["num_y_points"]
+    step_size = tx_grid_info["step_size"]
+
+    # Convert world position to height map index
+    row_index = int(np.clip(np.round((y - ymin) / step_size), 0, num_y_points - 1))  # row (y)
+    col_index = int(np.clip(np.round((x - xmin) / step_size), 0, num_x_points - 1))  # col (x)
+
+    return row_index, col_index
+
+
+def _index_to_world(row_index: int, col_index: int, tx_grid_info: dict) -> tuple[float]:
+    """Convert height map indices to world coordinates"""
+    # Retrive grid information
+    xmin = tx_grid_info["xmin"]
+    ymin = tx_grid_info["ymin"]
+    step_size = tx_grid_info["step_size"]
+
+    # Convert to height map index to world postion
+    x = xmin + col_index * step_size
+    y = ymin + row_index * step_size
+
+    return x, y
+
+
+def _snap_to_nearest_valid_position(position: List[float], tx_grid_info: dict) -> List[float]:
+    """Snap world coordinates to nearest valid height map point"""
+    # Retrieve current transmitter position
+    x_current, y_current, _ = position
+
+    # Convert world position to height map index
+    row_index, col_index = _world_to_index(x_current, y_current, tx_grid_info)
+
+    # Get nearest index with valid height
+    # If (col_index, row_index) is already valid then (col_index, row_index) = (valid_col_index, valid_row_index)
+    valid_row_index, valid_col_index = tx_grid_info["nearest_idx"][:, row_index, col_index]
+
+    z = tx_grid_info["height_matrix"][valid_row_index, valid_col_index]
+    x, y = _index_to_world(valid_row_index, valid_col_index, tx_grid_info)
+
+    return [float(x), float(y), float(z)]

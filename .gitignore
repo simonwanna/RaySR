@@ -219,3 +219,4 @@ example.ipynb
 src/poc/data/
 **/processed_data/
 README.rst
+wandb/

@@ -1,10 +1,16 @@
 import functools
+from typing import List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchmetrics
 from lightning import LightningModule
+
+try:
+    from lightning.pytorch.loggers.wandb import WandbLogger  # type: ignore
+except Exception:
+    WandbLogger = None  # type: ignore
 
 from poc.models.modeling_utils import (
     SCPA,
@@ -33,6 +39,7 @@ class PANLightningModule(LightningModule):
         w_charb: float = 1.0,
         w_grad: float = 0.2,
         w_ssim: float = 0.1,
+        num_val_log_images: int = 4,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -50,6 +57,10 @@ class PANLightningModule(LightningModule):
         self.val_psnr = torchmetrics.PeakSignalNoiseRatio()
         self.train_ssim = torchmetrics.StructuralSimilarityIndexMeasure()
         self.val_ssim = torchmetrics.StructuralSimilarityIndexMeasure()
+
+        # Image logging buffer
+        self._val_examples: List[dict] = []
+        self.num_val_log_images: int = num_val_log_images
 
     def criterion(self, sr: torch.Tensor, hr: torch.Tensor) -> torch.Tensor:
         """Weighted sum of losses"""
@@ -107,8 +118,83 @@ class PANLightningModule(LightningModule):
         self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True, batch_size=lr_maps.size(0))
         self.log("val_psnr", psnr, on_step=False, on_epoch=True, prog_bar=True, batch_size=lr_maps.size(0))
         self.log("val_ssim", ssim, on_step=False, on_epoch=True, prog_bar=True, batch_size=lr_maps.size(0))
+        self.log("val_sr_std", sr_maps.std(), on_epoch=True, prog_bar=False, batch_size=lr_maps.size(0))
+
+        # Collect sample triplets for image logging (first few from first batches)
+        try:
+            if len(self._val_examples) < self.num_val_log_images:
+                remaining = self.num_val_log_images - len(self._val_examples)
+                take = min(remaining, lr_maps.size(0))
+                sample_ids = batch.get("sample_id")
+                for i in range(take):
+                    sid = None
+                    if sample_ids is not None:
+                        # sample_ids could be a tensor with shape [B]
+                        try:
+                            sid = int(sample_ids[i].item())
+                        except Exception:
+                            sid = None
+                    self._val_examples.append(
+                        {
+                            "lr": lr_maps[i].detach().cpu(),
+                            "hr": hr_maps[i].detach().cpu(),
+                            "sr": sr_maps[i].detach().cpu(),
+                            "sample_id": sid,
+                        }
+                    )
+        except Exception:
+            # Never break validation due to logging collection
+            pass
 
         return loss
+
+    def on_validation_epoch_start(self) -> None:
+        # Reset buffer at the start of each validation epoch
+        self._val_examples = []
+
+    def on_validation_epoch_end(self) -> None:
+        # Log collected validation image triplets (LR | SR | HR) to the logger (if WandB)
+        if not self._val_examples:
+            return
+
+        logger = getattr(self, "logger", None)
+        if logger is None:
+            self._val_examples = []
+            return
+
+        # Only log images when using WandB logger
+        is_wandb = WandbLogger is not None and isinstance(logger, WandbLogger)
+        if not is_wandb:
+            self._val_examples = []
+            return
+
+        import numpy as np
+        from matplotlib import cm
+
+        cmap = cm.get_cmap("viridis")
+        eps = 1e-12
+
+        def to_rgb(panel: torch.Tensor) -> "np.ndarray":
+            arr = panel.squeeze(0).numpy()
+            a_min, a_max = float(arr.min()), float(arr.max())
+            norm = (arr - a_min) / (a_max - a_min + eps) if a_max - a_min >= eps else np.zeros_like(arr)
+            rgba = cmap(norm)
+            return (rgba[..., :3] * 255).astype(np.uint8)
+
+        colored_imgs: List["np.ndarray"] = []
+        captions: List[str] = []
+        for ex in self._val_examples:
+            lr = ex["lr"]
+            hr = ex["hr"]
+            sr = ex["sr"]
+            lr_up = F.interpolate(lr.unsqueeze(0), size=hr.shape[-2:], mode="nearest").squeeze(0)
+            triplet_rgb = np.concatenate([to_rgb(lr_up), to_rgb(sr), to_rgb(hr)], axis=1)
+            colored_imgs.append(triplet_rgb)
+            sid = ex.get("sample_id")
+            captions.append(f"sample_id={sid}" if sid is not None else "val_sample")
+
+        logger.log_image(key="val/image_triplets", images=colored_imgs, caption=captions, step=int(self.global_step))
+        self._val_examples = []
 
     def configure_optimizers(self) -> dict:
         optimizer = torch.optim.AdamW(
