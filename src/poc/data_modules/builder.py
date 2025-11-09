@@ -163,11 +163,11 @@ class SceneTransmitterBuilder:
 
         # Create transmitters
         for i, pos in enumerate(tx_positions, start=1):
-
             # Validate current transmitter position
             if tx_grid_info is not None:
                 pos = _snap_to_nearest_valid_position(pos, tx_grid_info)
                 pos[2] += config.tx_height_margin
+                tx_positions[i - 1] = pos
 
             name = f"tx_{i}"
             self.scene.add(Transmitter(name=name, position=pos, power_dbm=config.tx_power_dbm, color=(0, 0, 1)))
@@ -175,7 +175,7 @@ class SceneTransmitterBuilder:
         return tx_positions, grid_info
 
 
-def _world_to_index(x: float, y: float, tx_grid_info: dict) -> List[int]:
+def _world_to_index(x: float, y: float, tx_grid_info: dict) -> tuple[int]:
     """Convert world position to height map index"""
     # Retrive grid information
     xmin = tx_grid_info["xmin"]
@@ -191,7 +191,7 @@ def _world_to_index(x: float, y: float, tx_grid_info: dict) -> List[int]:
     return row_index, col_index
 
 
-def _index_to_world(row_index: int, col_index: int, tx_grid_info: dict) -> List[float]:
+def _index_to_world(row_index: int, col_index: int, tx_grid_info: dict) -> tuple[float]:
     """Convert height map indices to world coordinates"""
     # Retrive grid information
     xmin = tx_grid_info["xmin"]
@@ -220,4 +220,4 @@ def _snap_to_nearest_valid_position(position: List[float], tx_grid_info: dict) -
     z = tx_grid_info["height_matrix"][valid_row_index, valid_col_index]
     x, y = _index_to_world(valid_row_index, valid_col_index, tx_grid_info)
 
-    return x, y, z
+    return [float(x), float(y), float(z)]

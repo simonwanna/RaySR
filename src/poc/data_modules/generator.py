@@ -3,11 +3,10 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-import torch
-import sionna
-from sionna.rt import RadioMapSolver
-from scipy import ndimage as ndi
 import numpy as np
+import torch
+from scipy import ndimage as ndi
+from sionna.rt import RadioMapSolver
 from tqdm import tqdm
 
 from poc.data_modules.builder import SceneTransmitterBuilder, TransmitterConfig
@@ -52,7 +51,7 @@ class RadioMapDataGenerator:
         scene: "Scene" = None,
         min_object_height: float = 10.0,
         step_size_power: float = 10.0,
-        step_size_exponent: float = -1.0
+        step_size_exponent: float = -1.0,
     ) -> None:
         self.metric_type = metric_type
         self.n_samples = n_samples
@@ -64,8 +63,8 @@ class RadioMapDataGenerator:
         self.step_size_power = step_size_power
         self.step_size_exponent = step_size_exponent
         self.tx_grid_info = None
-        self._generate_tx_grid_info()
         self._setup(scene)
+        self._generate_tx_grid_info()
 
     def _setup(self, scene: "Scene") -> None:
         """Setup the data generator with the given scene"""
@@ -82,7 +81,7 @@ class RadioMapDataGenerator:
         ymin, ymax = float(scene_bbox.min.y), float(scene_bbox.max.y)
 
         # Determine grid resolution
-        step_size = self.step_size_power ** self.step_size_exponent
+        step_size = self.step_size_power**self.step_size_exponent
         num_x_points = int(np.ceil((xmax - xmin) / step_size)) + 1
         num_y_points = int(np.ceil((ymax - ymin) / step_size)) + 1
 
@@ -91,7 +90,7 @@ class RadioMapDataGenerator:
         # Determine valid objects based on min height
         valid_object_bboxes = []
         for obj in tqdm(self.scene.objects.values(), desc="Extracting valid scene objects"):
-            if getattr(obj, "mi_mesh", None) and obj.name not in ['ground', 'Terrain', 'Plane', 'floor']:
+            if getattr(obj, "mi_mesh", None) and obj.name not in ["ground", "Terrain", "Plane", "floor"]:
                 if obj.mi_mesh.bbox().extents()[2] >= self.min_object_height:
                     valid_object_bboxes.append(obj.mi_mesh.bbox())
 
@@ -108,20 +107,18 @@ class RadioMapDataGenerator:
 
             col_idx_min = max(col_idx_min, 0)
             row_idx_min = max(row_idx_min, 0)
-            col_idx_max = min(col_idx_max, num_x_points-1)
-            row_idx_max = min(row_idx_max, num_y_points-1)
+            col_idx_max = min(col_idx_max, num_x_points - 1)
+            row_idx_max = min(row_idx_max, num_y_points - 1)
 
-            if col_idx_min > col_idx_max or row_idx_min > row_idx_max: 
+            if col_idx_min > col_idx_max or row_idx_min > row_idx_max:
                 continue
 
-            block = height_matrix[row_idx_min:(row_idx_max + 1), col_idx_min:(col_idx_max + 1)]
+            block = height_matrix[row_idx_min : (row_idx_max + 1), col_idx_min : (col_idx_max + 1)]
             np.fmax(block, float(bb.max.z), out=block)
 
         # Generate "nearest valid neighbor" indexes for NaN values
         valid = ~np.isnan(height_matrix)
-        nearest_idx = ndi.distance_transform_edt(
-            ~valid, return_distances=False, return_indices=True
-        )
+        nearest_idx = ndi.distance_transform_edt(~valid, return_distances=False, return_indices=True)
 
         tx_grid_info = {
             "xmin": xmin,
@@ -163,7 +160,7 @@ class RadioMapDataGenerator:
     ) -> SuperResolutionDataSample:
         """Generate a single super-resolution data sample"""
 
-        #TODO: use min_tx_height and more...
+        # TODO: use min_tx_height and more...
 
         # Build transmitters in scene
         tx_positions, grid_info = self.builder.build(config, scene_corners, self.tx_grid_info)

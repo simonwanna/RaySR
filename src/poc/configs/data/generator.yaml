@@ -14,4 +14,4 @@ generator:
 
   min_object_height: 10.0  # Minimum object height to consider for transmitter placement (meters)
   step_size_power: 10.0  # Step size for grid discretization (meters)
-  step_size_exponent: -1.0  # Example: step_size = step_size_power ** step_size_exponent
+  step_size_exponent: 0.0  # Example: step_size = step_size_power ** step_size_exponent
