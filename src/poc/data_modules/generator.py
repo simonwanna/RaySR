@@ -8,6 +8,7 @@ import torch
 from scipy import ndimage as ndi
 from sionna.rt import RadioMapSolver
 from tqdm import tqdm
+import mitsuba as mi
 
 from poc.data_modules.builder import SceneTransmitterBuilder, TransmitterConfig
 
@@ -72,64 +73,98 @@ class RadioMapDataGenerator:
         self.builder = SceneTransmitterBuilder(scene)
         self.rm_solver = RadioMapSolver()
 
+
+    def _height_map_ray_casting(
+            self, direction: tuple[float, float, float]
+            ) -> tuple[np.ndarray, dict[str, float]]:
+        """Generate height map using ray casting method"""
+        # Get scene bounding box
+        mi_scene = self.scene.mi_scene
+        bbox = mi_scene.bbox()
+
+        # Calculate grid step size
+        h = self.step_size_power ** self.step_size_exponent
+        xmin, xmax = float(bbox.min.x), float(bbox.max.x)
+        ymin, ymax = float(bbox.min.y), float(bbox.max.y)
+        z_top = float(bbox.max.z)
+
+        # Generate ray origins on a grid above the scene
+        x_vals = np.arange(xmin, xmax + h, h)
+        y_vals = np.arange(ymin, ymax + h, h)
+        nx, ny = len(x_vals), len(y_vals)
+
+        # Create meshgrid for ray origins
+        X, Y = np.meshgrid(x_vals, y_vals)
+        Xf = X.ravel()
+        Yf = Y.ravel()
+        Zf = np.full(X.size, -z_top * direction[2])
+
+        # Cast rays and get intersection points
+        ray = mi.Ray3f(
+            o=mi.Point3f(Xf, Yf, Zf),
+            d=mi.Vector3f(*direction)
+            )
+        scene_intersect = mi_scene.ray_intersect(ray)    
+        z_hit = scene_intersect.p.z
+        valid = scene_intersect.is_valid()
+        mask = valid
+
+        # Reshape results into height map
+        z_np = np.array(z_hit, dtype=float)
+        mask_np = np.array(mask, dtype=bool)
+        z_np[~mask_np] = np.nan
+
+        Z = z_np.reshape(ny, nx)
+        meta = {
+            "xmin": xmin, "xmax": xmax,
+            "ymin": ymin, "ymax": ymax,
+            "h": h, "nx": nx, "ny": ny
+        }
+        return Z, meta
+    
+
+    def _generate_height_map(self) -> tuple[np.ndarray, dict]:
+        """Generate height map of the scene using ray casting"""
+        # Ray casting in downward direction
+        Z, meta = self._height_map_ray_casting(direction=(0.0, 0.0, -1.0))
+        mask = ~np.isnan(Z)
+
+        if self.min_object_height is not None:
+            # Ray cast in upward direction to determine ground height
+            ground_height, _ = self._height_map_ray_casting(direction=(0.0, 0.0, 1.0))
+
+            # Determine valid relative heights
+            height_above_ground = Z - ground_height
+            mask &= ~(~np.isnan(height_above_ground) & (height_above_ground < self.min_object_height))
+
+        # Apply mask to height map
+        Z[~mask] = np.nan
+
+        return Z, meta
+
+
     def _generate_tx_grid_info(self) -> None:
         """Generate transmitter grid info based on scene geometry"""
 
-        # Obtain scene bounding box
-        scene_bbox = self.scene.mi_scene.bbox()
-        xmin, xmax = float(scene_bbox.min.x), float(scene_bbox.max.x)
-        ymin, ymax = float(scene_bbox.min.y), float(scene_bbox.max.y)
-
-        # Determine grid resolution
-        step_size = self.step_size_power**self.step_size_exponent
-        num_x_points = int(np.ceil((xmax - xmin) / step_size)) + 1
-        num_y_points = int(np.ceil((ymax - ymin) / step_size)) + 1
-
-        height_matrix = np.full((num_y_points, num_x_points), np.nan, dtype=float)
-
-        # Determine valid objects based on min height
-        valid_object_bboxes = []
-        for obj in tqdm(self.scene.objects.values(), desc="Extracting valid scene objects"):
-            if getattr(obj, "mi_mesh", None) and obj.name not in ["ground", "Terrain", "Plane", "floor"]:
-                if obj.mi_mesh.bbox().extents()[2] >= self.min_object_height:
-                    valid_object_bboxes.append(obj.mi_mesh.bbox())
-
-        if len(valid_object_bboxes) == 0:
-            logger.warning("Scene contains no valid objects.")
-            return
-
-        # Populate height matrix
-        for bb in tqdm(valid_object_bboxes, desc="Generating height map"):
-            col_idx_min = int(np.ceil((float(bb.min.x) - xmin) / step_size))
-            col_idx_max = int(np.floor((float(bb.max.x) - xmin) / step_size))
-            row_idx_min = int(np.ceil((float(bb.min.y) - ymin) / step_size))
-            row_idx_max = int(np.floor((float(bb.max.y) - ymin) / step_size))
-
-            col_idx_min = max(col_idx_min, 0)
-            row_idx_min = max(row_idx_min, 0)
-            col_idx_max = min(col_idx_max, num_x_points - 1)
-            row_idx_max = min(row_idx_max, num_y_points - 1)
-
-            if col_idx_min > col_idx_max or row_idx_min > row_idx_max:
-                continue
-
-            block = height_matrix[row_idx_min : (row_idx_max + 1), col_idx_min : (col_idx_max + 1)]
-            np.fmax(block, float(bb.max.z), out=block)
+        # Generate height map and discretization info
+        height_map, discretization_info  = self._generate_height_map()
 
         # Generate "nearest valid neighbor" indexes for NaN values
-        valid = ~np.isnan(height_matrix)
+        valid = ~np.isnan(height_map)
         nearest_idx = ndi.distance_transform_edt(~valid, return_distances=False, return_indices=True)
+        nearest_idx = np.array(nearest_idx)
 
+        # Store transmitter grid info
         tx_grid_info = {
-            "xmin": xmin,
-            "xmax": xmax,
-            "ymin": ymin,
-            "ymax": ymax,
-            "num_x_points": num_x_points,
-            "num_y_points": num_y_points,
-            "step_size": step_size,
-            "height_matrix": height_matrix,
-            "nearest_idx": nearest_idx,
+            "xmin": discretization_info["xmin"], # minimum x coordinate
+            "xmax": discretization_info["xmax"], # maximum x coordinate
+            "ymin": discretization_info["ymin"], # minimum y coordinate
+            "ymax": discretization_info["ymax"], # maximum y coordinate
+            "nx":   discretization_info["nx"],   # number of points in x direction
+            "ny":   discretization_info["ny"],   # number of points in y direction
+            "h":    discretization_info["h"],    # grid step size
+            "height_map": height_map,            # height map matrix
+            "nearest_idx": nearest_idx,          # nearest valid neighbor indexes
         }
 
         self.tx_grid_info = tx_grid_info
@@ -159,8 +194,6 @@ class RadioMapDataGenerator:
         self, sample_id: int, config: TransmitterConfig, scene_corners: tuple
     ) -> SuperResolutionDataSample:
         """Generate a single super-resolution data sample"""
-
-        # TODO: use min_tx_height and more...
 
         # Build transmitters in scene
         tx_positions, grid_info = self.builder.build(config, scene_corners, self.tx_grid_info)

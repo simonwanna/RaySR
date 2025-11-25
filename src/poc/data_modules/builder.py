@@ -139,7 +139,7 @@ class SceneTransmitterBuilder:
         return positions, grid_info
 
     def build(
-        self, config: TransmitterConfig, scene_corners: tuple, tx_grid_info: dict = None
+        self, config: TransmitterConfig, scene_corners: tuple, tx_grid_info: dict | None = None
     ) -> tuple[List[List[float]], dict]:
         """Build transmitters on the scene"""
         config = config.validate()
@@ -175,32 +175,31 @@ class SceneTransmitterBuilder:
         return tx_positions, grid_info
 
 
-def _world_to_index(x: float, y: float, tx_grid_info: dict) -> tuple[int]:
+def _world_to_index(x: float, y: float, tx_grid_info: dict) -> tuple[int, int]:
     """Convert world position to height map index"""
     # Retrive grid information
-    xmin = tx_grid_info["xmin"]
-    ymin = tx_grid_info["ymin"]
-    num_x_points = tx_grid_info["num_x_points"]
-    num_y_points = tx_grid_info["num_y_points"]
-    step_size = tx_grid_info["step_size"]
+    xmin = tx_grid_info["xmin"] # minimum x coordinate
+    ymin = tx_grid_info["ymin"] # minimum y coordinate
+    nx = tx_grid_info["nx"]     # number of points in x direction
+    ny = tx_grid_info["ny"]     # number of points in y direction
+    h = tx_grid_info["h"]       # grid step size
 
     # Convert world position to height map index
-    row_index = int(np.clip(np.round((y - ymin) / step_size), 0, num_y_points - 1))  # row (y)
-    col_index = int(np.clip(np.round((x - xmin) / step_size), 0, num_x_points - 1))  # col (x)
-
+    row_index = int(np.clip(np.round((y - ymin) / h), 0, ny - 1))  # row (y)
+    col_index = int(np.clip(np.round((x - xmin) / h), 0, nx - 1))  # col (x)
     return row_index, col_index
 
 
-def _index_to_world(row_index: int, col_index: int, tx_grid_info: dict) -> tuple[float]:
+def _index_to_world(row_index: int, col_index: int, tx_grid_info: dict) -> tuple[float, float]:
     """Convert height map indices to world coordinates"""
     # Retrive grid information
-    xmin = tx_grid_info["xmin"]
-    ymin = tx_grid_info["ymin"]
-    step_size = tx_grid_info["step_size"]
+    xmin = tx_grid_info["xmin"] # minimum x coordinate
+    ymin = tx_grid_info["ymin"] # minimum y coordinate
+    h = tx_grid_info["h"]       # grid step size
 
     # Convert to height map index to world postion
-    x = xmin + col_index * step_size
-    y = ymin + row_index * step_size
+    x = xmin + col_index * h
+    y = ymin + row_index * h
 
     return x, y
 
@@ -217,7 +216,7 @@ def _snap_to_nearest_valid_position(position: List[float], tx_grid_info: dict) -
     # If (col_index, row_index) is already valid then (col_index, row_index) = (valid_col_index, valid_row_index)
     valid_row_index, valid_col_index = tx_grid_info["nearest_idx"][:, row_index, col_index]
 
-    z = tx_grid_info["height_matrix"][valid_row_index, valid_col_index]
+    z = tx_grid_info["height_map"][valid_row_index, valid_col_index]
     x, y = _index_to_world(valid_row_index, valid_col_index, tx_grid_info)
 
     return [float(x), float(y), float(z)]
