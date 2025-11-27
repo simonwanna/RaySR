@@ -23,6 +23,8 @@ class TransmitterConfig:
     # Grid placement (evenly spaced grid with optional randomization)
     grid_randomization: float = 0.0  # 0.0 = perfect grid, 1.0 = fully random within cells
     margin: float = 30.0  # margin to leave from scene borders when placing transmitters
+    include_height_map: bool = False  # Whether to generate and include height map as second channel
+    samples_per_tx: int = 1_000_000  # how many rays to cast per transmitter
 
     # TX parameters
     tx_power_dbm: float = 44.0
