@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional
 
 import mitsuba as mi
 import numpy as np
@@ -26,7 +26,7 @@ class SuperResolutionDataSample:
 
     sample_id: int
     tx_positions: torch.Tensor  # Shape: (n_tx, 3)
-    height_map: torch.Tensor  # Height map of the scene
+    height_map: Optional[torch.Tensor]  # Height map of the scene (optional)
     map_lr: torch.Tensor  # Low resolution radio map
     map_hr: torch.Tensor  # High resolution radio map
     scale: int  # Super-resolution scale factor
@@ -260,10 +260,14 @@ class RadioMapDataGenerator:
         tx_positions = torch.tensor(tx_positions)
         cx, cy = grid_info["center_x"], grid_info["center_y"]
 
-        height_map = self._generate_sample_height_map(grid_info, config)
-        height_map = torch.tensor(height_map, dtype=torch.float32)
+        if config.include_height_map:
+            height_map = self._generate_sample_height_map(grid_info, config)
+            height_map = torch.tensor(height_map, dtype=torch.float32)
+        else:
+            height_map = None
 
         # Generate LOW RESOLUTION radio map
+        # FIXME: fix rm_solver speed issue
         rm_lr = self.rm_solver(
             self.scene,
             max_depth=5,
@@ -384,7 +388,6 @@ class RadioMapDataGenerator:
         sample_data = {
             "sample_id": sample.sample_id,
             "tx_positions": sample.tx_positions,
-            "height_map": sample.height_map.cpu(),
             "map_lr": sample.map_lr.cpu(),
             "map_hr": sample.map_hr.cpu(),
             "scale": sample.scale,
@@ -392,6 +395,9 @@ class RadioMapDataGenerator:
             "grid_info": sample.grid_info,
             "coverage_size": sample.config.coverage_size,
         }
+
+        if sample.height_map is not None:
+            sample_data["height_map"] = sample.height_map.cpu()
 
         sample_path = os.path.join(save_dir, f"{naming}_{sample.sample_id:04d}.pt")
         torch.save(sample_data, sample_path)
