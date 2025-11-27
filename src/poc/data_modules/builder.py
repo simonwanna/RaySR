@@ -46,7 +46,7 @@ class TransmitterConfig:
         return self
 
     @property
-    def hr_cell_size(self) -> Tuple[float, float]:  # TODO: make HR cell size configurable
+    def hr_cell_size(self) -> Tuple[float, float]:
         """High resolution cell size (target resolution)"""
         # For 1:1 aspect ratio, use same size for both dimensions
         base_cell = self.coverage_size / self.hr_grid_size

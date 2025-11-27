@@ -11,10 +11,7 @@ def generate_data(cfg: DictConfig) -> None:
     logging.info("Data Generation Configuration:")
     logging.info(OmegaConf.to_yaml(cfg))
 
-    # Load scene; TODO: set max grid size based on scene
     # merge_shapes=False to determine seperate object heights
-    # if cfg.scene_name == "empty":
-    #     scene = load_scene()
     if cfg.scene_name == "etoile":
         scene = load_scene(sionna.rt.scene.etoile, merge_shapes=False)
     elif cfg.scene_name == "san_francisco":
