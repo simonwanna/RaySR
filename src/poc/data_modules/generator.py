@@ -1,14 +1,14 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
+import mitsuba as mi
 import numpy as np
 import torch
 from scipy import ndimage as ndi
 from sionna.rt import RadioMapSolver
 from tqdm import tqdm
-import mitsuba as mi
 
 from poc.data_modules.builder import SceneTransmitterBuilder, TransmitterConfig
 
@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from sionna.rt.radio_map_solvers.planar_radio_map import PlanarRadioMap
+    from sionna.rt.radio_map_solvers.planar_radio_map import RadioMap
     from sionna.rt.scene import Scene
 
 
@@ -49,7 +49,7 @@ class RadioMapDataGenerator:
         naming_convention: str = "sample_{:04d}.pt",
         to_db: bool = True,
         db_floor: float = -150.0,
-        scene: "Scene" = None,
+        scene: "Scene | None" = None,
         min_object_height: float = 10.0,
         step_size_power: float = 10.0,
         step_size_exponent: float = -1.0,
@@ -67,23 +67,34 @@ class RadioMapDataGenerator:
         self._setup(scene)
         self._generate_tx_grid_info()
 
-    def _setup(self, scene: "Scene") -> None:
+    def _setup(self, scene: "Scene | None") -> None:
         """Setup the data generator with the given scene"""
+        if scene is None:
+            raise ValueError("A valid 'Scene' object must be provided to the data generator. 'scene' is None.")
         self.scene = scene
         self.builder = SceneTransmitterBuilder(scene)
         self.rm_solver = RadioMapSolver()
 
-
-    def _height_map_ray_casting(
-            self, direction: tuple[float, float, float]
-            ) -> tuple[np.ndarray, dict[str, float]]:
+    def _height_map_ray_casting(self, direction: tuple[float, float, float]) -> tuple[np.ndarray, dict[str, float]]:
         """Generate height map using ray casting method"""
+        if direction not in [(0.0, 0.0, -1.0), (0.0, 0.0, 1.0)]:
+            raise ValueError(
+                "Direction must be either (0.0, 0.0, -1.0) for downward or (0.0, 0.0, 1.0) for upward ray casting."
+            )
+
         # Get scene bounding box
-        mi_scene = self.scene.mi_scene
+        if getattr(self.scene, "mi_scene", None) is None:
+            raise ValueError("Scene is not properly initialized. 'Scene' object does not have 'mi_scene' attribute.")
+
+        mi_scene = cast("mi.Scene", self.scene.mi_scene)  # to avoid type checker warning
+
+        if getattr(mi_scene, "bbox", None) is None:
+            raise ValueError("Scene is not properly initialized. 'mi_scene' object does not have 'bbox' attribute.")
+
         bbox = mi_scene.bbox()
 
         # Calculate grid step size
-        h = self.step_size_power ** self.step_size_exponent
+        h = self.step_size_power**self.step_size_exponent
         xmin, xmax = float(bbox.min.x), float(bbox.max.x)
         ymin, ymax = float(bbox.min.y), float(bbox.max.y)
         z_top = float(bbox.max.z)
@@ -100,11 +111,8 @@ class RadioMapDataGenerator:
         Zf = np.full(X.size, -z_top * direction[2])
 
         # Cast rays and get intersection points
-        ray = mi.Ray3f(
-            o=mi.Point3f(Xf, Yf, Zf),
-            d=mi.Vector3f(*direction)
-            )
-        scene_intersect = mi_scene.ray_intersect(ray)    
+        ray = mi.Ray3f(o=mi.Point3f(Xf, Yf, Zf), d=mi.Vector3f(*direction))
+        scene_intersect = mi_scene.ray_intersect(ray)
         z_hit = scene_intersect.p.z
         valid = scene_intersect.is_valid()
         mask = valid
@@ -115,13 +123,8 @@ class RadioMapDataGenerator:
         z_np[~mask_np] = np.nan
 
         Z = z_np.reshape(ny, nx)
-        meta = {
-            "xmin": xmin, "xmax": xmax,
-            "ymin": ymin, "ymax": ymax,
-            "h": h, "nx": nx, "ny": ny
-        }
+        meta = {"xmin": xmin, "xmax": xmax, "ymin": ymin, "ymax": ymax, "h": h, "nx": nx, "ny": ny}
         return Z, meta
-    
 
     def _generate_height_map(self) -> tuple[np.ndarray, dict]:
         """Generate height map of the scene using ray casting"""
@@ -142,12 +145,11 @@ class RadioMapDataGenerator:
 
         return Z, meta
 
-
     def _generate_tx_grid_info(self) -> None:
         """Generate transmitter grid info based on scene geometry"""
 
         # Generate height map and discretization info
-        height_map, discretization_info  = self._generate_height_map()
+        height_map, discretization_info = self._generate_height_map()
 
         # Generate "nearest valid neighbor" indexes for NaN values
         valid = ~np.isnan(height_map)
@@ -156,20 +158,20 @@ class RadioMapDataGenerator:
 
         # Store transmitter grid info
         tx_grid_info = {
-            "xmin": discretization_info["xmin"], # minimum x coordinate
-            "xmax": discretization_info["xmax"], # maximum x coordinate
-            "ymin": discretization_info["ymin"], # minimum y coordinate
-            "ymax": discretization_info["ymax"], # maximum y coordinate
-            "nx":   discretization_info["nx"],   # number of points in x direction
-            "ny":   discretization_info["ny"],   # number of points in y direction
-            "h":    discretization_info["h"],    # grid step size
-            "height_map": height_map,            # height map matrix
-            "nearest_idx": nearest_idx,          # nearest valid neighbor indexes
+            "xmin": discretization_info["xmin"],  # minimum x coordinate
+            "xmax": discretization_info["xmax"],  # maximum x coordinate
+            "ymin": discretization_info["ymin"],  # minimum y coordinate
+            "ymax": discretization_info["ymax"],  # maximum y coordinate
+            "nx": discretization_info["nx"],  # number of points in x direction
+            "ny": discretization_info["ny"],  # number of points in y direction
+            "h": discretization_info["h"],  # grid step size
+            "height_map": height_map,  # height map matrix
+            "nearest_idx": nearest_idx,  # nearest valid neighbor indexes
         }
 
         self.tx_grid_info = tx_grid_info
 
-    def _extract_metric(self, radio_map: "PlanarRadioMap") -> torch.Tensor:
+    def _extract_metric(self, radio_map: "RadioMap") -> torch.Tensor:
         """Extract the specified metric from the radio map"""
         if self.metric_type == "path_gain":
             return radio_map.path_gain.torch().cpu()
@@ -205,20 +207,20 @@ class RadioMapDataGenerator:
             self.scene,
             max_depth=5,
             samples_per_tx=10**6,
-            cell_size=config.lr_cell_size,
-            center=[cx, cy, 0.0],
-            size=[config.coverage_size, config.coverage_size],
-            orientation=[0, 0, 0],
+            cell_size=mi.Point2f(config.lr_cell_size),
+            center=mi.Point3f([cx, cy, 0.0]),
+            size=mi.Point2f([config.coverage_size, config.coverage_size]),
+            orientation=mi.Point3f([0, 0, 0]),
         )
 
         rm_hr = self.rm_solver(
             self.scene,
             max_depth=5,
             samples_per_tx=10**6,
-            cell_size=config.hr_cell_size,
-            center=[cx, cy, 0.0],
-            size=[config.coverage_size, config.coverage_size],
-            orientation=[0, 0, 0],
+            cell_size=mi.Point2f(config.hr_cell_size),
+            center=mi.Point3f([cx, cy, 0.0]),
+            size=mi.Point2f([config.coverage_size, config.coverage_size]),
+            orientation=mi.Point3f([0, 0, 0]),
         )
 
         # Extract the specified metric
@@ -299,7 +301,15 @@ class RadioMapDataGenerator:
 
     def _get_scene_boundary(self, margin: float) -> tuple:
         """Get the boundary of the scene for transmitter placement"""
-        bbox = self.scene.mi_scene.bbox()
+        if getattr(self.scene, "mi_scene", None) is None:
+            raise ValueError("Scene is not properly initialized. 'Scene' object does not have 'mi_scene' attribute.")
+
+        mi_scene = cast("mi.Scene", self.scene.mi_scene)  # to avoid type checker warning
+
+        if getattr(mi_scene, "bbox", None) is None:
+            raise ValueError("Scene is not properly initialized. 'mi_scene' object does not have 'bbox' attribute.")
+
+        bbox = mi_scene.bbox()
         x_min = bbox.min.x
         x_max = bbox.max.x
         y_min = bbox.min.y

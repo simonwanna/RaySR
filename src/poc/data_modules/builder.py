@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import mitsuba as mi
+
 # import drjit as dr
 import numpy as np
 import sionna
@@ -25,7 +27,7 @@ class TransmitterConfig:
     margin: float = 30.0  # margin to leave from scene borders when placing transmitters
 
     # TX parameters
-    tx_power_dbm: float = 44.0
+    tx_power_dbm: int = 44
     tx_array_pattern: str = "iso"
     polarization: str = "V"
     tx_default_height: float = 45.0
@@ -170,7 +172,9 @@ class SceneTransmitterBuilder:
                 tx_positions[i - 1] = pos
 
             name = f"tx_{i}"
-            self.scene.add(Transmitter(name=name, position=pos, power_dbm=config.tx_power_dbm, color=(0, 0, 1)))
+            self.scene.add(
+                Transmitter(name=name, position=mi.Point3f(pos), power_dbm=config.tx_power_dbm, color=(0, 0, 1))
+            )
 
         return tx_positions, grid_info
 
@@ -178,11 +182,11 @@ class SceneTransmitterBuilder:
 def _world_to_index(x: float, y: float, tx_grid_info: dict) -> tuple[int, int]:
     """Convert world position to height map index"""
     # Retrive grid information
-    xmin = tx_grid_info["xmin"] # minimum x coordinate
-    ymin = tx_grid_info["ymin"] # minimum y coordinate
-    nx = tx_grid_info["nx"]     # number of points in x direction
-    ny = tx_grid_info["ny"]     # number of points in y direction
-    h = tx_grid_info["h"]       # grid step size
+    xmin = tx_grid_info["xmin"]  # minimum x coordinate
+    ymin = tx_grid_info["ymin"]  # minimum y coordinate
+    nx = tx_grid_info["nx"]  # number of points in x direction
+    ny = tx_grid_info["ny"]  # number of points in y direction
+    h = tx_grid_info["h"]  # grid step size
 
     # Convert world position to height map index
     row_index = int(np.clip(np.round((y - ymin) / h), 0, ny - 1))  # row (y)
@@ -193,9 +197,9 @@ def _world_to_index(x: float, y: float, tx_grid_info: dict) -> tuple[int, int]:
 def _index_to_world(row_index: int, col_index: int, tx_grid_info: dict) -> tuple[float, float]:
     """Convert height map indices to world coordinates"""
     # Retrive grid information
-    xmin = tx_grid_info["xmin"] # minimum x coordinate
-    ymin = tx_grid_info["ymin"] # minimum y coordinate
-    h = tx_grid_info["h"]       # grid step size
+    xmin = tx_grid_info["xmin"]  # minimum x coordinate
+    ymin = tx_grid_info["ymin"]  # minimum y coordinate
+    h = tx_grid_info["h"]  # grid step size
 
     # Convert to height map index to world postion
     x = xmin + col_index * h
