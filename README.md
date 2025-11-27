@@ -17,12 +17,15 @@
 </p>
 
 ## Setup
-1. **Install** [uv](https://github.com/astral-sh/uv).
+1. **Install** [uv](https://github.com/astral-sh/uv) by running ``curl -LsSf https://astral.sh/uv/install.sh | sh``.
 2. **Sync environment**: ``uv sync``
 3. **Run commands**: ``uv run <command>``
 4. **(Dev)**: Install pre-commit hooks: ``pre-commit install``
 - Might need `LLVM` installed... 
 
-## Environment Instructions
-- To add dependencies, add them to `pyproject.toml` and run `uv sync`.
-- Optionally, you can use `uv add <package>` to add a package and sync the environment, e.g. `uv add 'requests==2.31.0'`.
+## Running the POC
+See [src/poc/readme.md](src/poc/readme.md) for detailed instructions on how to run the proof of concept code.
+Available commands:
+- `uv run generate`: Generate synthetic radio map data.
+- `uv run train`: Train the super-resolution model.
+- `uv run test`: Evaluate the model.
