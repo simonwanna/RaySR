@@ -5,10 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.11.*"  # Tensorflow 2.18.1 does not provide wheels for Python 3.13
 
-authors = [
-    { name = "Simon Wanna", email = "simonwanna@gmail.com" }
-]
-
 dependencies = [
     "ruff>=0.12.2",
     "pre-commit>=4.3.0",
