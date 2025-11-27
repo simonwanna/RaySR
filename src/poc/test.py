@@ -24,12 +24,20 @@ def bicubic_upsample(lr: torch.Tensor, scale: int) -> torch.Tensor:
     return F.interpolate(lr, scale_factor=scale, mode="bicubic", align_corners=False)
 
 
-def compute_metrics(pred: torch.Tensor, target: torch.Tensor) -> Dict[str, float]:
+def compute_metrics(pred: torch.Tensor, target: torch.Tensor, db_floor: float, db_ceiling: float) -> Dict[str, float]:
     psnr = PeakSignalNoiseRatio().to(pred.device)
     ssim = StructuralSimilarityIndexMeasure().to(pred.device)
+
+    # Calculate RMSE in dB
+    # First un-normalize to dB scale
+    pred_db = pred * (db_ceiling - db_floor) + db_floor
+    target_db = target * (db_ceiling - db_floor) + db_floor
+    rmse_db = torch.sqrt(F.mse_loss(pred_db, target_db))
+
     return {
         "psnr": psnr(pred, target).item(),
         "ssim": ssim(pred, target).item(),
+        "rmse_db": rmse_db.item(),
     }
 
 
@@ -81,11 +89,15 @@ def test(cfg: DictConfig) -> None:
         with torch.no_grad():
             pred = model(lr)
 
+        # If two channels, remove the second channel
+        if lr.shape[1] > 1:
+            lr = lr[:, :1, ...]
+
         interp = bicubic_upsample(lr, scale=scale)
 
         metrics = {
-            "model": compute_metrics(pred, hr),
-            "bicubic": compute_metrics(interp, hr),
+            "model": compute_metrics(pred, hr, cfg.test.db_floor, cfg.test.db_ceiling),
+            "bicubic": compute_metrics(interp, hr, cfg.test.db_floor, cfg.test.db_ceiling),
         }
 
         save_result(cfg.test.save_dir, sample_id, lr, hr, pred, interp, metrics)
@@ -93,7 +105,11 @@ def test(cfg: DictConfig) -> None:
 
     avg_model_psnr = sum(m["model"]["psnr"] for m in all_metrics) / len(all_metrics)
     avg_bicubic_psnr = sum(m["bicubic"]["psnr"] for m in all_metrics) / len(all_metrics)
+    avg_model_rmse = sum(m["model"]["rmse_db"] for m in all_metrics) / len(all_metrics)
+    avg_bicubic_rmse = sum(m["bicubic"]["rmse_db"] for m in all_metrics) / len(all_metrics)
+
     print(f"Average Model PSNR: {avg_model_psnr:.2f}, Bicubic PSNR: {avg_bicubic_psnr:.2f}")
+    print(f"Average Model RMSE: {avg_model_rmse:.2f} dB, Bicubic RMSE: {avg_bicubic_rmse:.2f} dB")
 
 
 if __name__ == "__main__":
