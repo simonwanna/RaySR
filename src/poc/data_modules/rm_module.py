@@ -6,17 +6,15 @@ import torch
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset, random_split
 
-# from poc.data_modules.helpers import standarize_img
-# from poc.data_modules.helpers import normalize_img
-
 
 class SuperResolutionDataset(Dataset):
     """Lazy-loading Dataset for super-resolution radio map data"""
 
-    def __init__(self, sample_paths: List[str], db_floor: float, db_ceiling: float):
+    def __init__(self, sample_paths: List[str], db_floor: float, db_ceiling: float, height_ceiling: float = 50.0):
         self.sample_paths = sample_paths
         self.db_floor = db_floor
         self.db_ceiling = db_ceiling
+        self.height_ceiling = height_ceiling
 
     def __len__(self):
         return len(self.sample_paths)
@@ -25,19 +23,27 @@ class SuperResolutionDataset(Dataset):
         x01 = (x_db - self.db_floor) / (self.db_ceiling - self.db_floor)
         return torch.clamp(x01, 0.0, 1.0)
 
+    def _norm_height(self, x_m: torch.Tensor) -> torch.Tensor:
+        x01 = x_m / self.height_ceiling
+        return torch.clamp(x01, 0.0, 1.0)
+
     def __getitem__(self, idx: int) -> dict:
         # Load only one sample
         sample_data = torch.load(self.sample_paths[idx], map_location="cpu", weights_only=False)
 
-        # If only one channel, add channel dimension; FIXME: handle multi-channel case
+        # If only one channel, add channel dimension;
         lr = sample_data["map_lr"].unsqueeze(0)  # [1, H, W]
         hr = sample_data["map_hr"].unsqueeze(0)  # [1, H, W]
 
-        # TODO: stack lr + height map if multichannel case
-
-        # Normalize to [0, 1] range
+        # Normalize radio maps to [0, 1] range
         lr = self._norm_db01(lr)
         hr = self._norm_db01(hr)
+
+        # Stack height map if available
+        if "height_map" in sample_data:
+            height_map = sample_data["height_map"].unsqueeze(0)  # [1, H, W]
+            height_map = self._norm_height(height_map)
+            lr = torch.cat([lr, height_map], dim=0)  # [2, H, W]
 
         return {
             "lr": lr,  # One or two channels
@@ -60,6 +66,7 @@ class RadioMapDataModule(LightningDataModule):
         val_split: float = 0.2,
         db_floor: float = -150.0,
         db_ceiling: float = -50.0,
+        height_ceiling: float = 50.0,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -71,7 +78,12 @@ class RadioMapDataModule(LightningDataModule):
     def setup(self, stage: str = None) -> None:
         """Setup datasets for training and validation"""
         if self.dataset is None:
-            self.dataset = self._load_dataset(self.hparams.dataset_path, self.hparams.db_floor, self.hparams.db_ceiling)
+            self.dataset = self._load_dataset(
+                self.hparams.dataset_path,
+                self.hparams.db_floor,
+                self.hparams.db_ceiling,
+                self.hparams.height_ceiling,
+            )
 
         if stage == "fit" or stage is None:
             # Split dataset
@@ -99,7 +111,9 @@ class RadioMapDataModule(LightningDataModule):
         )
 
     @staticmethod
-    def _load_dataset(save_dir: str, db_floor: float, db_ceiling: float) -> SuperResolutionDataset:
+    def _load_dataset(
+        save_dir: str, db_floor: float, db_ceiling: float, height_ceiling: float
+    ) -> SuperResolutionDataset:
         """Lazy load dataset from directory with per-sample files"""
 
         # Collect all sample files
@@ -110,4 +124,6 @@ class RadioMapDataModule(LightningDataModule):
         logging.info(f"Found {len(sample_files)} samples in {save_dir}")
 
         # Return lazy dataset
-        return SuperResolutionDataset(sample_files, db_floor=db_floor, db_ceiling=db_ceiling)
+        return SuperResolutionDataset(
+            sample_files, db_floor=db_floor, db_ceiling=db_ceiling, height_ceiling=height_ceiling
+        )
