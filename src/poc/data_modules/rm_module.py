@@ -33,12 +33,14 @@ class SuperResolutionDataset(Dataset):
         lr = sample_data["map_lr"].unsqueeze(0)  # [1, H, W]
         hr = sample_data["map_hr"].unsqueeze(0)  # [1, H, W]
 
+        # TODO: stack lr + height map if multichannel case
+
         # Normalize to [0, 1] range
         lr = self._norm_db01(lr)
         hr = self._norm_db01(hr)
 
         return {
-            "lr": lr,
+            "lr": lr,  # One or two channels
             "hr": hr,
             "tx_positions": sample_data["tx_positions"],
             "sample_id": sample_data["sample_id"],

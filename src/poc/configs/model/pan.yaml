@@ -4,7 +4,7 @@ model:
   
   # Model architecture
   scale: 2      # Upscaling factor
-  in_nc: 1      # Single channel radio maps
+  in_nc: 2      # Single channel radio maps
   out_nc: 1     # Single channel output
   nf: 40        # Number of features
   unf: 24       # Upsampling features
