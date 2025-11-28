@@ -1,0 +1,21 @@
+Metric: path_gain, Scale: 2x
+LR cell: (0.625, 0.625), HR cell: (0.3125, 0.3125)
+Coverage: 160.0x160.0m
+Radio Map info:
+    Max depth: 3
+    Samples per TX: 100_000
+Global discretization info:
+    Bounds: ((-478.708740234375, 520.8206715303309), (-550.0, 549.921568627451))
+    Grid size: (1594, 1754)
+    Step length: 0.6274509803921569
+[sample 1] LR=(256, 256) 14.21s, HR=(512, 512) 18.17s, dx=160.00m, dy=160.00m, HM=(256, 256) 0.00s, BM=(256, 256) 0.00s, LOS=(256, 256) 13.36s, sample time (RM)=32.38s, sample time (mask)=13.36s
+[sample 2] LR=(256, 256) 12.30s, HR=(512, 512) 17.45s, dx=160.00m, dy=160.00m, HM=(256, 256) 0.00s, BM=(256, 256) 0.00s, LOS=(256, 256) 15.02s, sample time (RM)=29.75s, sample time (mask)=15.02s
+[sample 3] LR=(256, 256) 12.24s, HR=(512, 512) 16.64s, dx=160.00m, dy=160.00m, HM=(256, 256) 0.00s, BM=(256, 256) 0.00s, LOS=(256, 256) 15.94s, sample time (RM)=28.88s, sample time (mask)=15.94s
+[sample 4] LR=(256, 256) 12.81s, HR=(512, 512) 18.19s, dx=160.00m, dy=160.00m, HM=(256, 256) 0.00s, BM=(256, 256) 0.00s, LOS=(256, 256) 14.99s, sample time (RM)=31.00s, sample time (mask)=14.99s
+[sample 5] LR=(256, 256) 12.29s, HR=(512, 512) 18.87s, dx=160.00m, dy=160.00m, HM=(256, 256) 0.00s, BM=(256, 256) 0.00s, LOS=(256, 256) 16.61s, sample time (RM)=31.16s, sample time (mask)=16.61s
+
+Sample generation time summary:
+Sum of sample generation times (RM):   153.17s
+Average sample generation time (RM):   30.63s
+Sum of sample generation times (mask): 75.92s
+Average sample generation time (mask): 15.18s

@@ -19,6 +19,7 @@ from tqdm import tqdm
 from dataclasses import dataclass
 import time
 import argparse
+import logging
 
 RM_SOLVER = RadioMapSolver()
 
@@ -36,6 +37,9 @@ class TransmitterConfig:
 
     hr_cell_size: tuple[float, float] = (hr_size, hr_size)
     lr_cell_size: tuple[float, float] = (lr_size, lr_size)
+
+    rm_max_depth: int = 3
+    rm_samples_per_tx: int = 10**5
     
     grid_randomization: float = 1.0
     scene_grid_margin: float = 30.0
@@ -52,7 +56,7 @@ class TransmitterConfig:
 
     n_samples: int = 5
     min_object_height: float = 10.0
-    step_length: float = 0.1
+    step_length: float = 1.0
 
     building_mask_threshold: float = 0.0
     los_mask_threshold: float = 0.0
@@ -75,24 +79,18 @@ class SuperResolutionDataSample:
 
     sample_id: int
     tx_positions: np.ndarray    # Shape: (n_tx, 3)
-    height_map_from_ray: np.ndarray  # Height map generated via ray casting
-    height_map_from_map: np.ndarray  # Height map generated via grid info
-    building_mask_from_ray: np.ndarray   # Building mask generated via ray casting
-    building_mask_from_map: np.ndarray  # Building mask generated via grid info
-    los_mask_from_ray: np.ndarray   # LoS mask generated via ray casting,
-    los_mask_from_map: np.ndarray  # LoS mask generated via ray casting,
+    height_map: np.ndarray  # Height map generated via grid info
+    building_mask: np.ndarray  # Building mask generated via grid info
+    los_mask: np.ndarray  # LoS mask generated via ray casting,
     map_lr: np.ndarray          # Low resolution radio map
     map_hr: np.ndarray          # High resolution radio map
     scale: int                  # Super-resolution scale factor
     metric_type: str            # Type of metric stored
     grid_info: dict             # Grid info for the sample
     config: TransmitterConfig   # Transmitter configuration
-    time_hmr: float       # Time taken for height map generation via ray casting
-    time_hmm: float       # Time taken for height map generation via map info
-    time_bmm: float       # Time taken for building mask generation via map info
-    time_bmr: float       # Time taken for building mask generation via ray casting
-    time_losr: float       # Time taken for building mask and LoS mask generation via ray casting
-    time_losm: float       # Time taken for building mask and LoS mask generation via map info
+    time_hm: float       # Time taken for height map generation via map info
+    time_bm: float       # Time taken for building mask generation via map info
+    time_los: float       # Time taken for building mask and LoS mask generation via map info
     time_lr: float       # Time taken for low-resolution map generation
     time_hr: float       # Time taken for high-resolution map generation
     rendered_image: np.ndarray  # Rendered image of the radio map
@@ -689,37 +687,24 @@ def generate_sample(
     tx_positions = np.asarray(tx_positions)
     cx, cy = grid_info["center_x"], grid_info["center_y"]
 
-    # Generate sample height map
     start_time = time.time()
-    height_map_from_ray = generate_sample_height_map(scene, grid_info, config)
-    time_hmr = time.time() - start_time
+    height_map = grid_info["grid_height_map"]
+    time_hm = time.time() - start_time
 
     start_time = time.time()
-    height_map_from_map = grid_info["grid_height_map"]
-    time_hmm = time.time() - start_time
+    building_mask = grid_info["grid_building_mask"]
+    time_bm = time.time() - start_time
 
     start_time = time.time()
-    building_mask_from_map = grid_info["grid_building_mask"]
-    time_bmm = time.time() - start_time
-
-    start_time = time.time()
-    building_mask_from_ray, ground_height_map_from_ray = generate_sample_building_mask(scene, height_map_from_ray, grid_info, config)
-    time_bmr = time.time() - start_time
-
-    start_time = time.time()
-    los_mask_from_ray = generate_sample_los_mask(scene, ground_height_map_from_ray, grid_info, config)
-    time_losr = time.time() - start_time
-
-    start_time = time.time()
-    los_mask_from_map = generate_sample_los_mask(scene, grid_info["grid_ground_height_map"], grid_info, config)
-    time_losm = time.time() - start_time
+    los_mask = generate_sample_los_mask(scene, grid_info["grid_ground_height_map"], grid_info, config)
+    time_los = time.time() - start_time
     
     # Generate (LR, HR) radio map pairs
     start_time = time.time()
     rm_lr = RM_SOLVER(
         scene,
-        max_depth=5,
-        samples_per_tx=10**6,
+        max_depth=config.rm_max_depth,
+        samples_per_tx=config.rm_samples_per_tx,
         cell_size=mi.Point2f(config.lr_cell_size),
         center=mi.Point3f([cx, cy, 0.0]),
         size=mi.Point2f([config.coverage_size, config.coverage_size]),
@@ -730,8 +715,8 @@ def generate_sample(
     start_time = time.time()
     rm_hr = RM_SOLVER(
         scene,
-        max_depth=5,
-        samples_per_tx=10**6,
+        max_depth=config.rm_max_depth,
+        samples_per_tx=config.rm_samples_per_tx,
         cell_size=mi.Point2f(config.hr_cell_size),
         center=mi.Point3f([cx, cy, 0.0]),
         size=mi.Point2f([config.coverage_size, config.coverage_size]),
@@ -777,24 +762,18 @@ def generate_sample(
     sample = SuperResolutionDataSample(
         sample_id=sample_id,
         tx_positions=tx_positions,
-        height_map_from_ray=height_map_from_ray,
-        height_map_from_map=height_map_from_map,
-        building_mask_from_ray=building_mask_from_ray,
-        building_mask_from_map=building_mask_from_map,
-        los_mask_from_ray=los_mask_from_ray,
-        los_mask_from_map=los_mask_from_map,
+        height_map=height_map,
+        building_mask=building_mask,
+        los_mask=los_mask,
         map_lr=map_lr,
         map_hr=map_hr,
         scale=config.scale,
         metric_type=config.metric_type,
         grid_info=grid_info,
         config=config,
-        time_hmr=time_hmr,
-        time_hmm=time_hmm,
-        time_bmm=time_bmm,
-        time_bmr=time_bmr,
-        time_losr=time_losr,
-        time_losm=time_losm,
+        time_hm=time_hm,
+        time_bm=time_bm,
+        time_los=time_los,
         time_lr=time_lr,
         time_hr=time_hr,
         rendered_image=rendered_image
@@ -812,7 +791,7 @@ def save_data(sample: SuperResolutionDataSample, save_dir: str | Path, naming: s
     sample_path = os.path.join(save_dir, f"sample{sample.sample_id:04d}.png")
     
     # Subplot LR and HR maps, height map, building mask, and LoS map
-    n_rows = 5
+    n_rows = 3
     n_cols = 2
 
     # Create subplots
@@ -828,46 +807,23 @@ def save_data(sample: SuperResolutionDataSample, save_dir: str | Path, naming: s
     axes[0, 1].set_title(f"High Resolution Map ({sample.metric_type})")
     fig.colorbar(im1, ax=axes[0, 1], label="dB")
 
-    im2 = axes[1, 0].imshow(sample.height_map_from_map, origin="lower", cmap="terrain")
+    im2 = axes[1, 0].imshow(sample.height_map, origin="lower", cmap="terrain")
     axes[1, 0].set_title("Building Mask (Map Info)")
     fig.colorbar(im2, ax=axes[1, 0], label="Mask Value")
 
-    # Height map from ray casting
-    if sample.height_map_from_ray is not None:
-        im3 = axes[1, 1].imshow(sample.height_map_from_ray, origin="lower", cmap="terrain")
-        axes[1, 1].set_title("Height Map (Ray Casting)")
-        fig.colorbar(im3, ax=axes[1, 1], label="Height (m)")
-    else:
-        axes[1, 1].axis('off')
 
-    im4 = axes[2, 0].imshow(sample.building_mask_from_map, origin="lower", cmap="gray")
-    axes[2, 0].set_title("Building Mask (Map Info)")
+    im3 = axes[1, 1].imshow(sample.building_mask, origin="lower", cmap="gray")
+    axes[1, 1].set_title("Building Mask (Map Info)")
+    fig.colorbar(im3, ax=axes[1, 1], label="Mask Value")
+
+    im4 = axes[2, 0].imshow(sample.los_mask, origin="lower", cmap="gray")
+    axes[2, 0].set_title("LoS Mask (Map Info)")
     fig.colorbar(im4, ax=axes[2, 0], label="Mask Value")
 
-    if sample.building_mask_from_ray is not None:
-        im5 = axes[2, 1].imshow(sample.building_mask_from_ray, origin="lower", cmap="gray")
-        axes[2, 1].set_title("Building Mask (Ray Casting)")
-        fig.colorbar(im5, ax=axes[2, 1], label="Mask Value")
-    else:
-        axes[2, 1].axis('off')
-
-    im6 = axes[3, 0].imshow(sample.los_mask_from_map, origin="lower", cmap="gray")
-    axes[3, 0].set_title("LoS Mask (Map Info)")
-    fig.colorbar(im6, ax=axes[3, 0], label="Mask Value")
-
-    if sample.los_mask_from_ray is not None:
-        im7 = axes[3, 1].imshow(sample.los_mask_from_ray, origin="lower", cmap="gray")
-        axes[3, 1].set_title("LoS Mask (Ray Casting)")
-        fig.colorbar(im7, ax=axes[3, 1], label="Mask Value")
-    else:
-        axes[3, 1].axis('off')
-
     # Rendered image
-    im8 = axes[4, 0].imshow(sample.rendered_image, origin="lower")
-    axes[4, 0].set_title("Rendered Image")
-    fig.colorbar(im8, ax=axes[4, 0], label="Intensity")
-
-    axes[4, 1].axis('off')
+    im5 = axes[2, 1].imshow(sample.rendered_image, origin="lower")
+    axes[2, 1].set_title("Rendered Image")
+    fig.colorbar(im5, ax=axes[2, 1], label="Intensity")
 
     plt.tight_layout()
     plt.savefig(sample_path)
@@ -897,18 +853,19 @@ def generate_dataset(
     # Load scene
     scene = get_scene(scene_name)
 
-    log = f"Generating {base_config.n_samples} super-resolution samples for {scene_name}...\n"
-    log += f"Metric: {base_config.metric_type}, Scale: {base_config.scale}x\n"
+    print(f"Generating {base_config.n_samples} super-resolution samples for {scene_name}...")
+    log = f"Metric: {base_config.metric_type}, Scale: {base_config.scale}x\n"
     log += f"LR cell: {base_config.lr_cell_size}, HR cell: {base_config.hr_cell_size}\n"
-    log += f"Coverage: {base_config.coverage_size}x{base_config.coverage_size}m"
-
-    print(log)
+    log += f"Coverage: {base_config.coverage_size}x{base_config.coverage_size}m\n"
+    log += f"Radio Map info:\n"
+    log += f"    Max depth: {base_config.rm_max_depth}\n"
+    log += f"    Samples per TX: {base_config.rm_samples_per_tx:_}\n"
 
     if isinstance(dataset_path, str):
         dataset_path = Path(dataset_path)
     os.makedirs(dataset_path, exist_ok=True)
 
-    print(f"Samples will be saved to: {dataset_path / scene_name}")
+    
     log_path = dataset_path / scene_name / "generation_log.txt"
 
     # Get boundaries of the scene
@@ -918,13 +875,16 @@ def generate_dataset(
 
     tx_grid_info = generate_tx_grid_info(scene, base_config)
     global_grid_info = generate_global_grid_info(scene, base_config)
-    log += "\nGlobal discretization info:\n"
+    log += "Global discretization info:\n"
     log += f"    Bounds: (({global_grid_info['xmin']}, {global_grid_info['xmax']}), ({global_grid_info['ymin']}, {global_grid_info['ymax']}))\n"
     log += f"    Grid size: ({global_grid_info['nx']}, {global_grid_info['ny']})\n"
-    log += f"    Step length: {global_grid_info['h']}\n\n"
+    log += f"    Step length: {global_grid_info['h']}\n"
 
-    total_time_w_r = []
-    total_time_wo_r = []
+    print(log)
+    print(f"Samples will be saved to: {dataset_path / scene_name}")
+
+    total_time_rm = []
+    total_time_mask = []
 
     for i in iterator:
         # Create config with unique seed for each sample
@@ -937,65 +897,33 @@ def generate_dataset(
         # Display sample info
         LR_str = str(tuple(sample.map_lr.shape))
         HR_str = str(tuple(sample.map_hr.shape))
-        HMR_str = "N/A" if sample.height_map_from_ray is None else str(tuple(sample.height_map_from_ray.shape))
-        HMM_str = str(tuple(sample.height_map_from_map.shape))
         dx = sample.grid_info["map_bounds"][0][1] - sample.grid_info["map_bounds"][0][0]
         dy = sample.grid_info["map_bounds"][1][1] - sample.grid_info["map_bounds"][1][0]
-        BMR_str = "N/A" if sample.building_mask_from_ray is None else str(tuple(sample.building_mask_from_ray.shape))
-        BMM_str = str(tuple(sample.building_mask_from_map.shape))
-        LOSR_str = "N/A" if sample.los_mask_from_ray is None else str(tuple(sample.los_mask_from_ray.shape))
-        LOSM_str = str(tuple(sample.los_mask_from_map.shape))
-
-        if sample.height_map_from_ray is None:
-            HMM_HRR_EQ = "N/A"
-            HMM_HMR_SIM = "N/A"
-            BMM_BMR_EQ = "N/A"
-            BMM_BMR_SIM = "N/A"
-            LOSM_LOSR_EQ = "N/A"
-            LOSM_LOSR_SIM = "N/A"
-        else:
-            HMM_HRR_EQ = "Yes" if sample.height_map_from_ray is not None and \
-                np.array_equal(sample.height_map_from_ray, sample.height_map_from_map) else "No"
-            HMM_HMR_SIM = "Yes" if \
-                np.allclose(sample.height_map_from_ray, sample.height_map_from_map, atol=1e-6, equal_nan=True) else "No"
-            
-            BMM_BMR_EQ = "Yes" if sample.building_mask_from_ray is not None and \
-                np.array_equal(sample.building_mask_from_ray, sample.building_mask_from_map) else "No"
-            BMM_BMR_SIM = "Yes" if \
-                np.allclose(sample.building_mask_from_ray, sample.building_mask_from_map, atol=1e-6, equal_nan=True) else "No"
-            
-            LOSM_LOSR_EQ = "Yes" if sample.los_mask_from_ray is not None and \
-                np.array_equal(sample.los_mask_from_ray, sample.los_mask_from_map) else "No"
-            LOSM_LOSR_SIM = "Yes" if \
-                np.allclose(sample.los_mask_from_ray, sample.los_mask_from_map, atol=1e-6, equal_nan=True) else "No"
+        HM_str = str(tuple(sample.height_map.shape))
+        BM_str = str(tuple(sample.building_mask.shape))
+        LOS_str = str(tuple(sample.los_mask.shape))
         
-        time_sample_w_r = np.nan
-        time_sample_wo_r = np.nan
+        time_sample_rm = np.nan
+        time_sample_mask = np.nan
         if show_mask_generation_time:
             LR_str += f" {sample.time_lr:.2f}s"
-            HR_str += f" {sample.time_hr:.2f}s"
-            HMR_str += f" {sample.time_hmr:.2f}s"
-            HMM_str += f" {sample.time_hmm:.2f}s"
-            LOSR_str += f" {sample.time_losr:.2f}s"
-            LOSM_str += f" {sample.time_losm:.2f}s"
-            BMR_str += f" {sample.time_bmr:.2f}s"
-            BMM_str += f" {sample.time_bmm:.2f}s"
+            HR_str += f" {sample.time_hr:.2f}s"            
+            HM_str += f" {sample.time_hm:.2f}s"
+            BM_str += f" {sample.time_bm:.2f}s"
+            LOS_str += f" {sample.time_los:.2f}s"
 
-            time_sample_w_r = sample.time_lr + sample.time_hr + sample.time_hmr + sample.time_bmr + sample.time_losr
-            total_time_w_r.append(time_sample_w_r)
-            time_sample_wo_r = sample.time_lr + sample.time_hr + sample.time_hmm + sample.time_bmm + sample.time_losm
-            total_time_wo_r.append(time_sample_wo_r)
+            time_sample_rm = sample.time_lr + sample.time_hr
+            total_time_rm.append(time_sample_rm)
+            time_sample_mask = sample.time_hm + sample.time_bm + sample.time_los
+            total_time_mask.append(time_sample_mask)
 
         sample_log = f"[sample {i+1}] LR={LR_str}, HR={HR_str}, " \
                      f"dx={dx:.2f}m, dy={dy:.2f}m, " \
-                     f"HMR={HMR_str}, HMM={HMM_str}, " \
-                     f"BMR={BMR_str}, BMM={BMM_str}, " \
-                     f"LOSR={LOSR_str}, LOSM={LOSM_str}, " \
-                     f"HMM=HRR={HMM_HRR_EQ}, HMM~HMR={HMM_HMR_SIM}, " \
-                     f"BMM=BMR={BMM_BMR_EQ}, BMM~BMR={BMM_BMR_SIM}, " \
-                     f"LOSM=LOSR={LOSM_LOSR_EQ}, LOSM~LOSR={LOSM_LOSR_SIM}, " \
-                     f"sample time (w/ ray)={time_sample_w_r:.2f}s, " \
-                     f"sample time (w/o ray)={time_sample_wo_r:.2f}s" \
+                     f"HM={HM_str}, " \
+                     f"BM={BM_str}, " \
+                     f"LOS={LOS_str}, " \
+                     f"sample time (RM)={time_sample_rm:.2f}s, " \
+                     f"sample time (mask)={time_sample_mask:.2f}s" \
 
         if show_progress and isinstance(iterator, tqdm):
             iterator.set_postfix(
@@ -1004,18 +932,9 @@ def generate_dataset(
                     "HR": HR_str,
                     "dx": f"{dx:.2f}m",
                     "dy": f"{dy:.2f}m",
-                    "HMR": HMR_str,
-                    "HMM": HMM_str,
-                    "BMR": BMR_str,
-                    "BMM": BMM_str,
-                    "LOSR": LOSR_str,
-                    "LOSM": LOSM_str,
-                    "HMM=HRR": HMM_HRR_EQ,
-                    "HMM~HMR": HMM_HMR_SIM,
-                    "BMM=BMR": BMM_BMR_EQ,
-                    "BMM~BMR": BMM_BMR_SIM,
-                    "LOSM=LOSR": LOSM_LOSR_EQ,
-                    "LOSM~LOSR": LOSM_LOSR_SIM,
+                    "HM": HM_str,
+                    "BM": BM_str,
+                    "LOS": LOS_str,
                 }
             )
 
@@ -1024,10 +943,10 @@ def generate_dataset(
         log += sample_log + "\n"
 
     log_runtime = f"\nSample generation time summary:\n"
-    log_runtime += f"Sum of sample generation times (w/ ray): {np.sum(total_time_w_r):.2f}s\n"
-    log_runtime += f"Average sample generation time (w/ ray): {np.mean(total_time_w_r):.2f}s\n"
-    log_runtime += f"Sum of sample generation times (w/o ray): {np.sum(total_time_wo_r):.2f}s\n"
-    log_runtime += f"Average sample generation time (w/o ray): {np.mean(total_time_wo_r):.2f}s\n"
+    log_runtime += f"Sum of sample generation times (RM):   {np.sum(total_time_rm):.2f}s\n"
+    log_runtime += f"Average sample generation time (RM):   {np.mean(total_time_rm):.2f}s\n"
+    log_runtime += f"Sum of sample generation times (mask): {np.sum(total_time_mask):.2f}s\n"
+    log_runtime += f"Average sample generation time (mask): {np.mean(total_time_mask):.2f}s\n"
     log += log_runtime
     if show_progress:
         print(log_runtime)
@@ -1043,7 +962,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--scenes",
-        nargs="+",  # one or more
+        nargs="+",
         default=["etoile", "san_francisco", "munich", "florence"],
         help="List of scene names to generate datasets for. Available scenes are 'etoile', 'san_francisco', 'munich', and 'florence'.",
     )

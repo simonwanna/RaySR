@@ -1,0 +1,20 @@
+Generating 5 super-resolution samples for florence...
+Metric: path_gain, Scale: 2x
+LR cell: (0.625, 0.625), HR cell: (0.3125, 0.3125)
+Coverage: 160.0x160.0m
+Global discretization info:
+    Bounds: ((-478.708740234375, 520.8206715303309), (-550.0, 549.921568627451))
+    Grid size: (1594, 1754)
+    Step length: 0.6274509803921569
+
+[sample 1] LR=(256, 256) 19.70s, HR=(512, 512) 18.98s, dx=160.00m, dy=160.00m, HMR=(256, 256) 19.05s, HMM=(256, 256) 0.00s, BMR=(256, 256) 14.54s, BMM=(256, 256) 0.00s, LOSR=(256, 256) 16.95s, LOSM=(256, 256) 18.73s, HMM=HRR=Yes, HMM~HMR=Yes, BMM=BMR=Yes, BMM~BMR=Yes, LOSM=LOSR=Yes, LOSM~LOSR=Yes, sample time (w/ ray)=89.21s, sample time (w/o ray)=57.41s
+[sample 2] LR=(256, 256) 19.21s, HR=(512, 512) 19.14s, dx=160.00m, dy=160.00m, HMR=(256, 256) 18.27s, HMM=(256, 256) 0.00s, BMR=(256, 256) 18.15s, BMM=(256, 256) 0.00s, LOSR=(256, 256) 14.88s, LOSM=(256, 256) 14.96s, HMM=HRR=Yes, HMM~HMR=Yes, BMM=BMR=Yes, BMM~BMR=Yes, LOSM=LOSR=Yes, LOSM~LOSR=Yes, sample time (w/ ray)=89.64s, sample time (w/o ray)=53.31s
+[sample 3] LR=(256, 256) 14.07s, HR=(512, 512) 18.81s, dx=160.00m, dy=160.00m, HMR=(256, 256) 18.31s, HMM=(256, 256) 0.00s, BMR=(256, 256) 18.30s, BMM=(256, 256) 0.00s, LOSR=(256, 256) 18.12s, LOSM=(256, 256) 16.14s, HMM=HRR=Yes, HMM~HMR=Yes, BMM=BMR=Yes, BMM~BMR=Yes, LOSM=LOSR=Yes, LOSM~LOSR=Yes, sample time (w/ ray)=87.61s, sample time (w/o ray)=49.01s
+[sample 4] LR=(256, 256) 18.94s, HR=(512, 512) 22.80s, dx=160.00m, dy=160.00m, HMR=(256, 256) 21.13s, HMM=(256, 256) 0.00s, BMR=(256, 256) 22.26s, BMM=(256, 256) 0.00s, LOSR=(256, 256) 18.14s, LOSM=(256, 256) 20.71s, HMM=HRR=Yes, HMM~HMR=Yes, BMM=BMR=Yes, BMM~BMR=Yes, LOSM=LOSR=Yes, LOSM~LOSR=Yes, sample time (w/ ray)=103.26s, sample time (w/o ray)=62.44s
+[sample 5] LR=(256, 256) 19.80s, HR=(512, 512) 18.84s, dx=160.00m, dy=160.00m, HMR=(256, 256) 24.92s, HMM=(256, 256) 0.00s, BMR=(256, 256) 21.32s, BMM=(256, 256) 0.00s, LOSR=(256, 256) 22.31s, LOSM=(256, 256) 21.93s, HMM=HRR=Yes, HMM~HMR=Yes, BMM=BMR=Yes, BMM~BMR=Yes, LOSM=LOSR=Yes, LOSM~LOSR=Yes, sample time (w/ ray)=107.18s, sample time (w/o ray)=60.57s
+
+Sample generation time summary:
+Sum of sample generation times (w/ ray): 476.90s
+Average sample generation time (w/ ray): 95.38s
+Sum of sample generation times (w/o ray): 282.74s
+Average sample generation time (w/o ray): 56.55s
