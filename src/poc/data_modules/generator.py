@@ -3,10 +3,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Optional
 
-import mitsuba as mi
-import numpy as np
 import torch
-from scipy import ndimage as ndi
 from sionna.rt import RadioMapSolver
 from tqdm import tqdm
 
@@ -64,170 +61,12 @@ class RadioMapDataGenerator:
         self.step_length = step_length
         self.tx_grid_info = None
         self._setup(scene)
-        self._generate_tx_grid_info()
 
     def _setup(self, scene: "Scene") -> None:
         """Setup the data generator with the given scene"""
         self.scene = scene
         self.builder = SceneTransmitterBuilder(scene)
         self.rm_solver = RadioMapSolver()
-
-    def _get_scene_disc_info(self) -> dict:
-        """Get scene discretization info for height map generation for valid transmitter placement"""
-        # Get scene bounding box
-        mi_scene = self.scene.mi_scene
-        bbox = mi_scene.bbox()
-
-        # Calculate grid step size
-        h = self.step_length
-        xmin, xmax_raw = float(bbox.min.x), float(bbox.max.x)
-        ymin, ymax_raw = float(bbox.min.y), float(bbox.max.y)
-
-        # Calculate number of grid points (including both endpoints)
-        nx = int(np.floor((xmax_raw - xmin) / h)) + 1
-        ny = int(np.floor((ymax_raw - ymin) / h)) + 1
-
-        # Snap xmax and ymax to grid
-        xmax = xmin + (nx - 1) * h
-        ymax = ymin + (ny - 1) * h
-
-        scene_disc_info = {
-            "xmin": xmin,
-            "xmax": xmax,
-            "ymin": ymin,
-            "ymax": ymax,
-            "nx": nx,
-            "ny": ny,
-            "h": h,
-        }
-
-        return scene_disc_info
-
-    @staticmethod
-    def _get_sample_disc_info(grid_info: dict, config: TransmitterConfig) -> dict:
-        """Get sample discretization info for height map extraction"""
-        # Retrieve grid parameters
-        map_bounds = grid_info["map_bounds"]
-        xmin, xmax = map_bounds[0]
-        ymin, ymax = map_bounds[1]
-
-        # Calculate number of grid points (including both endpoints)
-        nx = int(config.hr_grid_size / config.scale)
-        ny = int(config.hr_grid_size / config.scale)
-
-        sample_disc_info = {
-            "xmin": xmin,
-            "xmax": xmax,
-            "ymin": ymin,
-            "ymax": ymax,
-            "nx": nx,
-            "ny": ny,
-        }
-
-        return sample_disc_info
-
-    def _height_map_ray_casting(self, disc_info: dict, direction: tuple[float, float, float]) -> np.ndarray:
-        """Generate height map using ray casting method"""
-        # Get grid information
-        xmin = disc_info["xmin"]
-        xmax = disc_info["xmax"]
-        ymin = disc_info["ymin"]
-        ymax = disc_info["ymax"]
-        nx = disc_info["nx"]
-        ny = disc_info["ny"]
-
-        # Generate ray origins on a grid above the scene
-        x_vals = np.linspace(xmin, xmax, nx)
-        y_vals = np.linspace(ymin, ymax, ny)
-        nx, ny = x_vals.shape[0], y_vals.shape[0]
-
-        # Access mitsuba scene
-        mi_scene = self.scene.mi_scene
-
-        # Get ray origin height
-        ray_origin_height = float(mi_scene.bbox().max.z) + 1.0  # some arbitrary margin above scene
-
-        # Create meshgrid for ray origins
-        X, Y = np.meshgrid(x_vals, y_vals)
-        Xf = X.ravel()
-        Yf = Y.ravel()
-        Zf = np.full(X.size, -1.0 * direction[2] * ray_origin_height)  # set z coordinate based on ray direction:
-        # if direction is downward (0,0,-1), z = +ray_origin_height
-        # if direction is upward (0,0,1), z = -ray_origin_height
-
-        # Cast rays and get intersection points
-        ray = mi.Ray3f(o=mi.Point3f(Xf, Yf, Zf), d=mi.Vector3f(direction))
-        intersect = mi_scene.ray_intersect(ray)
-
-        # Convert to numpy array and invalidate non-hit points
-        hits = np.array(intersect.p.z, dtype=float)
-        valid_mask = np.array(intersect.is_valid(), dtype=bool)
-        hits[~valid_mask] = np.nan
-
-        # Reshape results into height map
-        height_map = hits.reshape(ny, nx)
-
-        return height_map
-
-    @staticmethod
-    def _generate_nearest_neighbor_indexes(height_map: np.ndarray) -> np.ndarray:
-        """Generate nearest valid neighbor indexes for NaN values in height map"""
-        valid = ~np.isnan(height_map)
-        nearest_idx = ndi.distance_transform_edt(~valid, return_distances=False, return_indices=True)
-        nearest_idx = np.array(nearest_idx)
-        return nearest_idx
-
-    def _generate_scene_height_map(self, scene_disc_info: dict) -> np.ndarray:
-        """Generate height map of the scene using ray casting"""
-        # Ray casting in downward direction for object z coordinates
-        scene_height_map = self._height_map_ray_casting(scene_disc_info, direction=(0.0, 0.0, -1.0))
-
-        # Ray cast in upward direction to determine ground z coordinates
-        scene_ground_height_map = self._height_map_ray_casting(scene_disc_info, direction=(0.0, 0.0, 1.0))
-
-        # Relative object heights
-        height_above_ground = scene_height_map - scene_ground_height_map
-
-        # Invalidate heights below minimum object height
-        scene_height_map[height_above_ground < self.min_object_height] = np.nan
-
-        return scene_height_map
-
-    def _generate_sample_height_map(self, grid_info: dict, config: TransmitterConfig) -> np.ndarray:
-        """Extract height map subset for the current sample based on coverage area"""
-        # Get sample discretization info
-        sample_disc_info = self._get_sample_disc_info(grid_info, config)
-
-        # Generate sample height map
-        sample_height_map = self._height_map_ray_casting(sample_disc_info, direction=(0.0, 0.0, -1.0))
-
-        return sample_height_map
-
-    def _generate_tx_grid_info(self) -> None:
-        """Generate transmitter grid info based on scene geometry"""
-        # Get scene discretization info
-        scene_disc_info = self._get_scene_disc_info()
-
-        # Generate height map and discretization info
-        scene_height_map = self._generate_scene_height_map(scene_disc_info)
-
-        # Generate "nearest valid neighbor" indexes for NaN values
-        nearest_idx = self._generate_nearest_neighbor_indexes(scene_height_map)
-
-        # Store transmitter grid info
-        tx_grid_info = {
-            "xmin": scene_disc_info["xmin"],  # minimum x coordinate
-            "xmax": scene_disc_info["xmax"],  # maximum x coordinate
-            "ymin": scene_disc_info["ymin"],  # minimum y coordinate
-            "ymax": scene_disc_info["ymax"],  # maximum y coordinate
-            "nx": scene_disc_info["nx"],  # number of points in x direction
-            "ny": scene_disc_info["ny"],  # number of points in y direction
-            "h": scene_disc_info["h"],  # grid step size
-            "height_map": scene_height_map,  # height map matrix
-            "nearest_idx": nearest_idx,  # nearest valid neighbor indexes
-        }
-
-        self.tx_grid_info = tx_grid_info
 
     def _extract_metric(self, radio_map: "PlanarRadioMap") -> torch.Tensor:
         """Extract the specified metric from the radio map"""
@@ -251,17 +90,21 @@ class RadioMapDataGenerator:
         return radio_map_db
 
     def _generate_sample(
-        self, sample_id: int, config: TransmitterConfig, scene_corners: tuple
+        self,
+        sample_id: int,
+        config: TransmitterConfig,
+        tx_grid_info: dict | None = None,
+        scene_grid_info: dict | None = None,
     ) -> SuperResolutionDataSample:
         """Generate a single super-resolution data sample"""
 
         # Build transmitters in scene
-        tx_positions, grid_info = self.builder.build(config, scene_corners, self.tx_grid_info)
+        tx_positions, grid_info = self.builder.build(config, tx_grid_info, scene_grid_info)
         tx_positions = torch.tensor(tx_positions)
         cx, cy = grid_info["center_x"], grid_info["center_y"]
 
         if config.include_height_map:
-            height_map = self._generate_sample_height_map(grid_info, config)
+            height_map = grid_info["height_map"]
             height_map = torch.tensor(height_map, dtype=torch.float32)
         else:
             height_map = None
@@ -270,8 +113,8 @@ class RadioMapDataGenerator:
         # FIXME: fix rm_solver speed issue
         rm_lr = self.rm_solver(
             self.scene,
-            max_depth=5,
-            samples_per_tx=10**6,
+            max_depth=config.max_depth,
+            samples_per_tx=config.samples_per_tx,
             cell_size=config.lr_cell_size,
             center=[cx, cy, 0.0],
             size=[config.coverage_size, config.coverage_size],
@@ -280,8 +123,8 @@ class RadioMapDataGenerator:
 
         rm_hr = self.rm_solver(
             self.scene,
-            max_depth=5,
-            samples_per_tx=10**6,
+            max_depth=config.max_depth,
+            samples_per_tx=config.samples_per_tx,
             cell_size=config.hr_cell_size,
             center=[cx, cy, 0.0],
             size=[config.coverage_size, config.coverage_size],
@@ -329,6 +172,8 @@ class RadioMapDataGenerator:
     def generate_dataset(
         self,
         base_config: TransmitterConfig,
+        tx_grid_info: dict | None = None,
+        scene_grid_info: dict | None = None,
         show_progress: bool = True,
     ) -> None:
         """Generate multiple super-resolution data samples"""
@@ -341,9 +186,6 @@ class RadioMapDataGenerator:
         os.makedirs(self.dataset_path, exist_ok=True)
         logging.info(f"Samples will be saved to: {self.dataset_path}")
 
-        # Get boundaries of the scene
-        scene_corners = self._get_scene_boundary(base_config.margin)
-
         iterator = tqdm(range(self.n_samples), desc="Generating samples") if show_progress else range(self.n_samples)
 
         for i in iterator:
@@ -352,7 +194,7 @@ class RadioMapDataGenerator:
 
             config = replace(base_config, seed=i + 200)
 
-            sample = self._generate_sample(i + 1, config, scene_corners)
+            sample = self._generate_sample(i + 1, config, tx_grid_info, scene_grid_info)
             self._save_data(sample, self.dataset_path, naming=self.naming_convention)
 
             if show_progress and isinstance(iterator, tqdm):
@@ -364,22 +206,6 @@ class RadioMapDataGenerator:
                 )
 
         logger.info(f"Dataset generation complete: {self.n_samples} samples saved to {self.dataset_path}")
-
-    def _get_scene_boundary(self, margin: float) -> tuple:
-        """Get the boundary of the scene for transmitter placement"""
-        bbox = self.scene.mi_scene.bbox()
-        x_min = bbox.min.x
-        x_max = bbox.max.x
-        y_min = bbox.min.y
-        y_max = bbox.max.y
-
-        # add margin
-        x_min += margin
-        x_max -= margin
-        y_min += margin
-        y_max -= margin
-
-        return ((x_min, x_max), (y_min, y_max))
 
     @staticmethod
     def _save_data(sample: SuperResolutionDataSample, save_dir: str, naming: str) -> None:
