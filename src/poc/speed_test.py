@@ -18,7 +18,7 @@ def setup_scene() -> sionna.rt.Scene:
     scene = load_scene(sionna.rt.scene.munich)
 
     # Add a transmitter
-    tx1 = Transmitter(name="tx1", position=[0, 0, 20], power_dbm=44.0)
+    tx1 = Transmitter(name="tx1", position=[-10, 50, 20], power_dbm=44.0)
     scene.add(tx1)
     tx2 = Transmitter(name="tx2", position=[50, 0, 20], power_dbm=44.0)
     scene.add(tx2)
@@ -27,7 +27,13 @@ def setup_scene() -> sionna.rt.Scene:
     return scene
 
 
-def measure_solver(scene: sionna.rt.Scene, cell_size: float, coverage_size: float = 500.0, samples: int = 10) -> float:
+def measure_solver(
+    scene: sionna.rt.Scene,
+    cell_size: float,
+    coverage_size: float = 500.0,
+    samples: int = 10,
+    num_rays: int = 1_000_000,
+) -> float:
     """Measure the execution time of the Sionna RadioMapSolver."""
     solver = RadioMapSolver()
 
@@ -43,7 +49,10 @@ def measure_solver(scene: sionna.rt.Scene, cell_size: float, coverage_size: floa
         orientation=[0, 0, 0],
     )
 
-    shape = rm.path_gain.shape
+    # take max over tx
+    path_gain = rm.path_gain.torch()
+    max_tx = torch.max(path_gain, dim=0)[0]
+    shape = max_tx.shape
     h, w = shape[-2], shape[-1]
     num_pixels = h * w
     logger.info(f"Solver Output Shape: {shape}, Pixels: {num_pixels} ({h}x{w})")
@@ -52,10 +61,10 @@ def measure_solver(scene: sionna.rt.Scene, cell_size: float, coverage_size: floa
     logger.info(f"Running {samples} samples for solver...")
     for _ in range(samples):
         start_time = time.perf_counter()
-        _ = solver(
+        rm = solver(
             scene,
-            max_depth=5,
-            samples_per_tx=100_000,
+            max_depth=7,
+            samples_per_tx=num_rays,
             cell_size=cell_size,
             center=[0, 0, 0],
             size=[coverage_size, coverage_size],
@@ -65,7 +74,20 @@ def measure_solver(scene: sionna.rt.Scene, cell_size: float, coverage_size: floa
         times.append(end_time - start_time)
 
     avg_time = sum(times) / len(times)
-    return avg_time, num_pixels
+
+    # Add measure for coverage
+    metric_tensor = rm.path_gain.torch().cpu()
+    metric_tensor = torch.max(metric_tensor, dim=0)[0]
+
+    # Calculate percentage of non-zero values
+    non_zero_count = (metric_tensor != 0.0).sum()
+    zero_count = metric_tensor.numel() - non_zero_count
+    percent = non_zero_count / metric_tensor.numel()
+    logger.info(f"Non-Zero Count: {non_zero_count}")
+    logger.info(f"Zero Count: {zero_count}")
+    logger.info(f"Coverage: {percent:.2%}")
+
+    return avg_time, num_pixels, percent
 
 
 def measure_sr(model: PANLightningModule, input_shape: tuple, device: torch.device, samples: int = 10) -> float:
@@ -110,17 +132,19 @@ def main() -> None:
     scene = setup_scene()
 
     # Experiment parameters
-    coverage_size = 500.0
-    samples = 5
+    coverage_size = 300.0
+    samples = 2
     base_cell_size = 3.0
     scales = [2, 3, 4]
+    num_rays_lr = 3_000_000
+    num_rays_hr = 3_000_000
 
     results = []
 
     # Measure base resolution solver once
     logger.info(f"--- Measuring Base Solver ({base_cell_size}m) ---")
-    time_base, pixels_base = measure_solver(
-        scene, cell_size=base_cell_size, coverage_size=coverage_size, samples=samples
+    time_base, pixels_base, percent_nonzero_base = measure_solver(
+        scene, cell_size=base_cell_size, coverage_size=coverage_size, samples=samples, num_rays=num_rays_lr
     )
 
     # Pre-calculate SR input shape (constant for all scales if base is constant)
@@ -132,13 +156,16 @@ def main() -> None:
         logger.info(f"--- Experiment Scale {scale}x: Target {target_res:.2f}m ---")
 
         # 1. HR Solver
-        time_hr, pixels_hr = measure_solver(scene, cell_size=target_res, coverage_size=coverage_size, samples=samples)
+        time_hr, pixels_hr, percent_nonzero_hr = measure_solver(
+            scene, cell_size=target_res, coverage_size=coverage_size, samples=samples, num_rays=num_rays_hr
+        )
         results.append(
             {
                 "Target": f"{target_res:.2f}m",
                 "Method": f"HR Solver ({target_res:.2f}m)",
                 "Time": time_hr,
                 "Pixels": pixels_hr,
+                "Coverage": percent_nonzero_hr,
             }
         )
 
@@ -155,21 +182,26 @@ def main() -> None:
                 "Target": f"{target_res:.2f}m",
                 "Method": f"LR Solver ({base_cell_size}m) + SR({scale}x)",
                 "Time": total_time,
-                "Pixels": pixels_hr,  # Target pixels
+                "Pixels": int(pixels_hr / scale),  # LR pixels
+                "Coverage": percent_nonzero_base,
                 "Details": f"Solver({pixels_base}px): {time_base:.4f}s, SR: {time_sr:.4f}s",
             }
         )
 
     # Print Results Table
-    print("\n" + "=" * 100)
-    print(f"{'Target Resolution':<20} | {'Method':<30} | {'Pixels':<10} | {'Time (s)':<15} | {'Details'}")
-    print("-" * 100)
+    print("\n" + "=" * 150)
+    print(
+        f"{'Target Resolution':<20} | {'Method':<30} | {'Pixels':<10} | {'Coverage (% non-zero)':<25} |\
+             {'Time (s)':<10} | {'Details'}"
+    )
+    print("-" * 150)
     for res in results:
         details = res.get("Details", "")
         print(
-            f"{res['Target']:<20} | {res['Method']:<30} | {res['Pixels']:<10} | {res['Time']:.4f}          | {details}"
+            f"{res['Target']:<20} | {res['Method']:<30} | {res['Pixels']:<10} | {res['Coverage']:<25.4f} |\
+                 {res['Time']:<10.4f} | {details}"
         )
-    print("=" * 100 + "\n")
+    print("=" * 150 + "\n")
 
 
 if __name__ == "__main__":
