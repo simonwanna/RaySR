@@ -111,6 +111,11 @@ def _generate_scene_height_map(scene: "Scene", scene_disc_info: dict) -> tuple[n
     """
     scene_height_map = _ray_cast(scene, scene_disc_info, direction=DIRECTION_DOWN)
     ground_height_map = _ray_cast(scene, scene_disc_info, direction=DIRECTION_UP)
+
+    # change nan-values to 0.0
+    scene_height_map = np.nan_to_num(scene_height_map, nan=0.0)
+    ground_height_map = np.nan_to_num(ground_height_map, nan=0.0)
+
     height_above_ground = scene_height_map - ground_height_map
     building_mask = height_above_ground > 0.0
 
@@ -348,19 +353,21 @@ def generate(config: dict) -> None:
         f"min_object_height={config['min_object_height']}"
     )
 
+    # Will always create grid info if this file is run
     logger.info("Transmitter grid info:")
     tx_grid_info = _generate_tx_grid_info(scene, config)
-
-    logger.info("Scene grid info:")
-    scene_grid_info = _generate_scene_grid_info(scene, config)
 
     with open(tx_grid_info_path, "wb") as f:
         pickle.dump(tx_grid_info, f)
     logger.info(f"Saved transmitter grid info to {tx_grid_info_path}")
 
-    with open(scene_grid_info_path, "wb") as f:
-        pickle.dump(scene_grid_info, f)
-    logger.info(f"Saved scene grid info to {scene_grid_info_path}")
+    if config["include_height_map"]:
+        logger.info("Scene grid info:")
+        scene_grid_info = _generate_scene_grid_info(scene, config)
+
+        with open(scene_grid_info_path, "wb") as f:
+            pickle.dump(scene_grid_info, f)
+        logger.info(f"Saved scene grid info to {scene_grid_info_path}")
 
 
 if __name__ == "__main__":
@@ -376,6 +383,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--min_object_height", type=float, required=True, help="Minimum object height for the height maps."
     )
+    parser.add_argument("--include_height_map", type=bool, required=True, help="Include height map.")
 
     config = vars(parser.parse_args())
 

@@ -42,6 +42,7 @@ uv run generate
     done
     ```
 
+**Note:** If you get an jit_cuda_compile() error, try to uncomment the `dr.set_flag(dr.JitFlag.Debug, True)` line in `data_modules/builder.py`.
 ---
 
 ## 🏋️ Training

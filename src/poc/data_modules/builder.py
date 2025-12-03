@@ -110,12 +110,9 @@ class SceneTransmitterBuilder:
                     row_bottom_index:row_top_index, col_left_index:col_right_index
                 ]
                 assert height_map_grid.shape == (scene_grid_info["ngrid"], scene_grid_info["ngrid"]), (
-                    f"Extracted height map shape {height_map_grid.shape} "
-                    f"does not match expected grid shape {(scene_grid_info['ngrid'], scene_grid_info['ngrid'])}"
+                    f"Extracted height map shape {height_map_grid.shape} \
+                        does not match expected grid shape {(scene_grid_info['ngrid'], scene_grid_info['ngrid'])}"
                 )
-
-            # TODO: If also include building mask or other maps add elif statements here
-
             else:
                 height_map_grid = None
 

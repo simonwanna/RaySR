@@ -110,7 +110,6 @@ class RadioMapDataGenerator:
             height_map = None
 
         # Generate LOW RESOLUTION radio map
-        # FIXME: fix rm_solver speed issue
         rm_lr = self.rm_solver(
             self.scene,
             max_depth=config.max_depth,

@@ -9,6 +9,9 @@ import sionna
 from omegaconf import DictConfig, OmegaConf
 from sionna.rt import load_scene
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def generate_data(cfg: DictConfig) -> None:
@@ -17,7 +20,24 @@ def generate_data(cfg: DictConfig) -> None:
 
     tx_grid_info = None
     scene_grid_info = None
-    if cfg.transmitter.include_height_map:
+
+    # Set paths
+    base_path = Path(cfg.data_dir) / "grid_data" / cfg.scene_name
+    suffix = (
+        f"{str(cfg.transmitter.scale).replace('.', '-')}_"
+        f"{str(cfg.transmitter.coverage_size).replace('.', '-')}_"
+        f"{str(cfg.transmitter.hr_grid_size).replace('.', '-')}_"
+        f"{str(cfg.generator.step_length).replace('.', '-')}_"
+        f"{str(cfg.generator.min_object_height).replace('.', '-')}.pkl"
+    )
+    tx_grid_info_path = base_path / f"tx_grid_info_{suffix}"
+    scene_grid_info_path = base_path / f"scene_grid_info_{suffix}"
+
+    # Check if height map and tx grid info needs to be created
+    need_hm = not os.path.exists(scene_grid_info_path) and cfg.transmitter.include_height_map
+    need_tx = not os.path.exists(tx_grid_info_path) and cfg.snap_to_grid
+
+    if need_hm or need_tx:
         subprocess.run(
             [
                 "python",
@@ -36,34 +56,32 @@ def generate_data(cfg: DictConfig) -> None:
                 str(cfg.generator.step_length),
                 "--min_object_height",
                 str(cfg.generator.min_object_height),
+                "--include_height_map",
+                str(cfg.transmitter.include_height_map),
             ]
         )
 
-        # Load scene grid info if height map is included
-        base_path = Path(cfg.data_dir) / "grid_data" / cfg.scene_name
-        suffix = (
-            f"{str(cfg.transmitter.scale).replace('.', '-')}_"
-            f"{str(cfg.transmitter.coverage_size).replace('.', '-')}_"
-            f"{str(cfg.transmitter.hr_grid_size).replace('.', '-')}_"
-            f"{str(cfg.generator.step_length).replace('.', '-')}_"
-            f"{str(cfg.generator.min_object_height).replace('.', '-')}.pkl"
-        )
-        tx_grid_info_path = base_path / f"tx_grid_info_{suffix}"
-        scene_grid_info_path = base_path / f"scene_grid_info_{suffix}"
-
-        if os.path.exists(tx_grid_info_path):
+    if cfg.snap_to_grid:
+        try:
             with open(tx_grid_info_path, "rb") as f:
                 tx_grid_info = pickle.load(f)
                 logging.info("Loaded tx_grid_info from: %s", tx_grid_info_path)
-        else:
-            logging.warning("tx_grid_info file not found at: %s", tx_grid_info_path)
+        except Exception as e:
+            logger.error("tx_grid_info file not needed or not found at: %s", tx_grid_info_path)
+            raise e
+    else:
+        logger.info("tx_grid_info not used")
 
-        if os.path.exists(scene_grid_info_path):
+    if cfg.transmitter.include_height_map:
+        try:
             with open(scene_grid_info_path, "rb") as f:
                 scene_grid_info = pickle.load(f)
                 logging.info("Loaded scene_grid_info from: %s", scene_grid_info_path)
-        else:
-            logging.warning("scene_grid_info file not found at: %s", scene_grid_info_path)
+        except Exception as e:
+            logger.error("scene_grid_info file not needed or not found at: %s", scene_grid_info_path)
+            raise e
+    else:
+        logging.info("scene_grid_info not used")
 
     # if cfg.scene_name == "empty":
     #     scene = load_scene()

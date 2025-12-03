@@ -76,7 +76,8 @@ class PANLightningModule(LightningModule):
         return loss
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert x.dtype == torch.float32 and torch.isfinite(x).all()
+        assert x.dtype == torch.float32
+        assert torch.isfinite(x).all()
         return self.model(x)
 
     def training_step(self, batch: dict) -> torch.Tensor:

@@ -2,7 +2,7 @@
 trainer:
   _target_: lightning.Trainer
   
-  accelerator: cpu
+  accelerator: gpu
   devices: 1
   precision: 32
   num_sanity_val_steps: 1
