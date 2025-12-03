@@ -11,6 +11,7 @@ rm_module:
   dataset_path: ${data_dir}/train_val  # change data_dir in the main config file
   db_floor: ${db_floor}
   db_ceiling: ${db_ceiling}
+  height_ceiling: 50.0
 
 
 # used for taining...

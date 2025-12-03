@@ -21,10 +21,6 @@ def train(cfg: DictConfig) -> None:
     # Train model
     trainer.fit(model, datamodule)
 
-    # Test model (optional)
-    if hasattr(cfg, "test") and cfg.test:
-        trainer.test(model, datamodule)
-
 
 if __name__ == "__main__":
     train()

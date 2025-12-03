@@ -76,7 +76,8 @@ class PANLightningModule(LightningModule):
         return loss
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert x.dtype == torch.float32 and torch.isfinite(x).all()
+        assert x.dtype == torch.float32
+        assert torch.isfinite(x).all()
         return self.model(x)
 
     def training_step(self, batch: dict) -> torch.Tensor:
@@ -279,5 +280,10 @@ class PanModel(nn.Module):
         out = self.conv_last(fea)
 
         ilr = F.interpolate(x, scale_factor=self.scale, mode="bilinear", align_corners=False)
+
+        # Handle case where input has more channels than output (e.g. auxiliary height map)
+        if ilr.shape[1] > out.shape[1]:
+            ilr = ilr[:, : out.shape[1], :, :]
+
         out = out + ilr
         return out

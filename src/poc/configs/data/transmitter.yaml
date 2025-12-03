@@ -13,3 +13,6 @@ transmitter:
   polarization: V  # [V | H | VH | cross]
   margin: 30.0  # margin to leave from scene borders when placing transmitters
   tx_height_margin: 5.0
+  include_height_map: true   # feature channel
+  samples_per_tx: 12000000
+  max_depth: 7
