@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
-
-import mitsuba as mi
 
 # import drjit as dr
 import numpy as np
 import sionna
 from sionna.rt import PlanarArray, Transmitter
+
+from poc.data_modules.height_map_generator import ray_cast_los
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # dr.set_flag(dr.JitFlag.Debug, True)  # NOTE: use if you get error in san_francisco processing...
 
@@ -25,6 +29,11 @@ class TransmitterConfig:
     # Grid placement (evenly spaced grid with optional randomization)
     grid_randomization: float = 0.0  # 0.0 = perfect grid, 1.0 = fully random within cells
     margin: float = 30.0  # margin to leave from scene borders when placing transmitters
+    include_height_map: bool = False  # Whether to generate and include height map as second channel
+    include_building_mask: bool = False  # Whether to include building mask in grid info
+    include_los_mask: bool = False  # Whether to include LOS mask in grid info
+    samples_per_tx: int = 1_000_000  # how many rays to cast per transmitter
+    max_depth: int = 5  # maximum ray tracing depth
 
     # TX parameters
     tx_power_dbm: int = 44
@@ -48,7 +57,7 @@ class TransmitterConfig:
         return self
 
     @property
-    def hr_cell_size(self) -> Tuple[float, float]:  # TODO: make HR cell size configurable
+    def hr_cell_size(self) -> Tuple[float, float]:
         """High resolution cell size (target resolution)"""
         # For 1:1 aspect ratio, use same size for both dimensions
         base_cell = self.coverage_size / self.hr_grid_size
@@ -83,30 +92,72 @@ class SceneTransmitterBuilder:
         for i in range(1, max_scan + 1):
             self._safe_remove(f"tx_{i}")
 
-    @staticmethod
-    def _generate_grid_positions(config: TransmitterConfig, scene_corners: tuple) -> Tuple[List[List[float]], dict]:
+    def _generate_grid_positions(
+        self, config: TransmitterConfig, scene_grid_info: dict | None = None
+    ) -> Tuple[List[List[float]], dict]:
         """Generate transmitter positions and return grid info"""
         grid_dim = int(np.ceil(np.sqrt(config.n_tx)))
+        height_map_grid = None
+        building_mask_grid = None
+        ground_height_map_grid = None
+        los_mask_grid = None
+        nx = None
+        ny = None
 
-        # Determine grid center
-        if scene_corners is not None:
-            (x_min, x_max), (y_min, y_max) = scene_corners
-            x_min += config.coverage_size / 2
-            x_max -= config.coverage_size / 2
-            y_min += config.coverage_size / 2
-            y_max -= config.coverage_size / 2
-            center_x = np.random.uniform(x_min, x_max)
-            center_y = np.random.uniform(y_min, y_max)
+        # Retrieve scene grid info if provided
+        if scene_grid_info is not None:
+            # Determine random center indices
+            center_col_index = np.random.choice(scene_grid_info["center_col_indices"])
+            center_row_index = np.random.choice(scene_grid_info["center_row_indices"])
+
+            # Determine grid corners in indices
+            half_grid = scene_grid_info["ngrid"] // 2
+            col_left_index = center_col_index - half_grid
+            col_right_index = center_col_index + half_grid
+            row_bottom_index = center_row_index - half_grid
+            row_top_index = center_row_index + half_grid
+
+            # Extract height map for the grid area
+            if config.include_height_map:
+                height_map_grid = scene_grid_info["height_map"][
+                    row_bottom_index:row_top_index, col_left_index:col_right_index
+                ]
+                assert height_map_grid.shape == (scene_grid_info["ngrid"], scene_grid_info["ngrid"]), (
+                    f"Extracted height map shape {height_map_grid.shape} "
+                    f"does not match expected grid shape {(scene_grid_info['ngrid'], scene_grid_info['ngrid'])}"
+                )
+
+            if config.include_building_mask:
+                building_mask_grid = scene_grid_info["building_mask"][
+                    row_bottom_index:row_top_index, col_left_index:col_right_index
+                ]
+                assert building_mask_grid.shape == (scene_grid_info["ngrid"], scene_grid_info["ngrid"]), (
+                    f"Extracted building mask shape {building_mask_grid.shape} "
+                    f"does not match expected grid shape {(scene_grid_info['ngrid'], scene_grid_info['ngrid'])}"
+                )
+
+            if config.include_los_mask:
+                ground_height_map_grid = scene_grid_info["ground_height_map"][
+                    row_bottom_index:row_top_index, col_left_index:col_right_index
+                ]
+
+            # Determine grid coordinates in world units
+            center_x, center_y = _index_to_world(center_row_index, center_col_index, scene_grid_info)
+            map_xmin, map_ymin = _index_to_world(row_bottom_index, col_left_index, scene_grid_info)
+            map_xmax, map_ymax = _index_to_world(row_top_index - 1, col_right_index - 1, scene_grid_info)
+
+            nx = scene_grid_info["ngrid"]
+            ny = scene_grid_info["ngrid"]
+
         else:
             center_x, center_y = 0.0, 0.0
+            map_xmin = center_x - config.coverage_size / 2
+            map_xmax = center_x + config.coverage_size / 2
+            map_ymin = center_y - config.coverage_size / 2
+            map_ymax = center_y + config.coverage_size / 2
+            height_map_grid = None
 
         grid_spacing = config.coverage_size / grid_dim
-
-        # Calculate map bounds (full coverage area)
-        map_xmin = center_x - config.coverage_size / 2
-        map_xmax = center_x + config.coverage_size / 2
-        map_ymin = center_y - config.coverage_size / 2
-        map_ymax = center_y + config.coverage_size / 2
 
         # Grid info
         grid_info = {
@@ -115,6 +166,12 @@ class SceneTransmitterBuilder:
             "map_bounds": [[map_xmin, map_xmax], [map_ymin, map_ymax]],
             "grid_spacing": grid_spacing,
             "grid_dim": grid_dim,
+            "height_map": height_map_grid,
+            "building_mask": building_mask_grid,
+            "ground_height_map": ground_height_map_grid,
+            "los_mask": los_mask_grid,
+            "nx": nx,
+            "ny": ny,
         }
 
         # Generate positions
@@ -141,7 +198,7 @@ class SceneTransmitterBuilder:
         return positions, grid_info
 
     def build(
-        self, config: TransmitterConfig, scene_corners: tuple, tx_grid_info: dict | None = None
+        self, config: TransmitterConfig, tx_grid_info: dict | None = None, scene_grid_info: dict | None = None
     ) -> tuple[List[List[float]], dict]:
         """Build transmitters on the scene"""
         config = config.validate()
@@ -161,7 +218,7 @@ class SceneTransmitterBuilder:
         )
 
         # Generate transmitter positions
-        tx_positions, grid_info = self._generate_grid_positions(config, scene_corners)
+        tx_positions, grid_info = self._generate_grid_positions(config, scene_grid_info)
 
         # Create transmitters
         for i, pos in enumerate(tx_positions, start=1):
@@ -172,38 +229,42 @@ class SceneTransmitterBuilder:
                 tx_positions[i - 1] = pos
 
             name = f"tx_{i}"
-            self.scene.add(
-                Transmitter(name=name, position=mi.Point3f(pos), power_dbm=config.tx_power_dbm, color=(0, 0, 1))
-            )
+            self.scene.add(Transmitter(name=name, position=pos, power_dbm=config.tx_power_dbm, color=(0, 0, 1)))
+
+        # make los mask part of grid_info
+        if config.include_los_mask:
+            los_mask = ray_cast_los(self.scene, grid_info, grid_info["ground_height_map"])
+            grid_info["los_mask"] = los_mask
 
         return tx_positions, grid_info
 
 
-def _world_to_index(x: float, y: float, tx_grid_info: dict) -> tuple[int, int]:
+def _world_to_index(x: float, y: float, grid_info: dict) -> tuple[int, int]:
     """Convert world position to height map index"""
     # Retrive grid information
-    xmin = tx_grid_info["xmin"]  # minimum x coordinate
-    ymin = tx_grid_info["ymin"]  # minimum y coordinate
-    nx = tx_grid_info["nx"]  # number of points in x direction
-    ny = tx_grid_info["ny"]  # number of points in y direction
-    h = tx_grid_info["h"]  # grid step size
+    xmin = grid_info["xmin"]
+    ymin = grid_info["ymin"]
+    nx = grid_info["nx"]  # number of points in x direction
+    ny = grid_info["ny"]  # number of points in y direction
+    h = grid_info["h"]  # grid step size
 
     # Convert world position to height map index
     row_index = int(np.clip(np.round((y - ymin) / h), 0, ny - 1))  # row (y)
     col_index = int(np.clip(np.round((x - xmin) / h), 0, nx - 1))  # col (x)
+
     return row_index, col_index
 
 
-def _index_to_world(row_index: int, col_index: int, tx_grid_info: dict) -> tuple[float, float]:
+def _index_to_world(row_index: int, col_index: int, grid_info: dict) -> tuple[float, float]:
     """Convert height map indices to world coordinates"""
     # Retrive grid information
-    xmin = tx_grid_info["xmin"]  # minimum x coordinate
-    ymin = tx_grid_info["ymin"]  # minimum y coordinate
-    h = tx_grid_info["h"]  # grid step size
+    xmin = grid_info["xmin"]
+    ymin = grid_info["ymin"]
+    h = grid_info["h"]
 
     # Convert to height map index to world postion
-    x = xmin + col_index * h
-    y = ymin + row_index * h
+    x = float(xmin + col_index * h)
+    y = float(ymin + row_index * h)
 
     return x, y
 

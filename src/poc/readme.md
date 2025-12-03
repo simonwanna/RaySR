@@ -21,7 +21,7 @@ Run `uv sync` to install/update environment.
     uv run train model.nf=64 data.n_samples=200
     ```
 - To see the full config for a run, just run the script; it prints the config at startup.
-
+- **Note**: When generating data, the scale factor and the number of channels needs to be the same for the model later on. 
 ---
 
 ## 🛠️ Data Generation
@@ -32,7 +32,7 @@ Generate a dataset of low-res/high-res radio map pairs:
 uv run generate
 ```
 
-- **Config:** `configs/data/radio_maps.yaml`
+- **Config:** `configs/data/generator.yaml`
 - **Output:** `.pt` files in the directory specified by `data.dataset_path`.
 
 - You can loop over the scenes creating n_samples per scene in one go:
@@ -71,9 +71,10 @@ Evaluate a trained model and save results:
 uv run test
 ```
 
-- **Config:** `configs/test/test.yaml`
+- **Config:** `configs/test/default.yaml`
 - **Output:** For each sample, saves a `.pt` file with:
     - Low-res input
+    - Height map (if available)
     - High-res ground truth
     - Model prediction
     - Bicubic upsampled baseline
@@ -109,7 +110,7 @@ uv run src/poc/visualize.py --results_dir outputs/results
 - [ ] Multiprocessing for data generation (maybe not needed? Pretty fast already)
 - [ ] Data augmentation (flip/rotate, etc.)
 - [x] Set scene boundary for transmitter placement
-- [ ] Prevent transmitters from being placed inside buildings etc.
+- [x] Prevent transmitters from being placed inside buildings etc.
 - [x] Save checkpoints in Hydra job folder
 - [x] Fix image mirroring bug in generation
-- [ ] Add multi-channel support (e.g., z value for buildings / mask for where there are no signal)
+- [x] Add multi-channel support (e.g., z value for buildings / mask for where there are no signal)
