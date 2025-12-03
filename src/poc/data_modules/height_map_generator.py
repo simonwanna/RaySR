@@ -117,14 +117,11 @@ def ray_cast_los(scene: "Scene", grid_info: dict, ground_height_map: np.ndarray)
 
     ray = mi.Ray3f(o=ray_origins, d=ray_directions)
     intersect = mi_scene.ray_intersect(ray=ray)
-    hits = intersect.p.z
+
     valid = intersect.is_valid()
-
-    hits = np.array(hits, dtype=float)
     valid_mask = np.array(valid, dtype=bool)
-    hits[~valid_mask] = np.nan
 
-    los_mask = hits.reshape(ny, nx)
+    los_mask = valid_mask.reshape(ny, nx)
 
     return los_mask
 

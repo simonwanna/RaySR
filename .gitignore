@@ -220,3 +220,4 @@ src/poc/data/
 **/processed_data/
 README.rst
 wandb/
+kladd.ipynb
