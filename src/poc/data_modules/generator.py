@@ -24,6 +24,8 @@ class SuperResolutionDataSample:
     sample_id: int
     tx_positions: torch.Tensor  # Shape: (n_tx, 3)
     height_map: Optional[torch.Tensor]  # Height map of the scene (optional)
+    building_mask: Optional[torch.Tensor]  # Building mask of the scene (optional)
+    los_mask: Optional[torch.Tensor]  # LOS mask of the scene (optional)
     map_lr: torch.Tensor  # Low resolution radio map
     map_hr: torch.Tensor  # High resolution radio map
     scale: int  # Super-resolution scale factor
@@ -105,9 +107,21 @@ class RadioMapDataGenerator:
 
         if config.include_height_map:
             height_map = grid_info["height_map"]
-            height_map = torch.tensor(height_map, dtype=torch.float32)
+            height_map = torch.tensor(height_map, dtype=torch.float32).cpu()
         else:
             height_map = None
+
+        if config.include_building_mask:
+            building_mask = grid_info["building_mask"]
+            building_mask = torch.tensor(building_mask, dtype=torch.float32).cpu()
+        else:
+            building_mask = None
+
+        if config.include_los_mask:
+            los_mask = grid_info["los_mask"]
+            los_mask = torch.tensor(los_mask, dtype=torch.float32).cpu()
+        else:
+            los_mask = None
 
         # Generate LOW RESOLUTION radio map
         # FIXME: fix rm_solver speed issue
@@ -159,6 +173,8 @@ class RadioMapDataGenerator:
             sample_id=sample_id,
             tx_positions=tx_positions,
             height_map=height_map,
+            building_mask=building_mask,
+            los_mask=los_mask,
             map_lr=map_lr,
             map_hr=map_hr,
             scale=config.scale,
@@ -213,6 +229,9 @@ class RadioMapDataGenerator:
 
         sample_data = {
             "sample_id": sample.sample_id,
+            "height_map": sample.height_map.cpu() if sample.height_map is not None else None,
+            "building_mask": sample.building_mask.cpu() if sample.building_mask is not None else None,
+            "los_mask": sample.los_mask.cpu() if sample.los_mask is not None else None,
             "tx_positions": sample.tx_positions,
             "map_lr": sample.map_lr.cpu(),
             "map_hr": sample.map_hr.cpu(),

@@ -14,5 +14,7 @@ transmitter:
   margin: 30.0  # margin to leave from scene borders when placing transmitters
   tx_height_margin: 5.0
   include_height_map: True
+  include_building_mask: True
+  include_los_mask: True
   samples_per_tx: 1000000
   max_depth: 5

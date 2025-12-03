@@ -16,7 +16,7 @@ def unnormalize(arr: np.ndarray, db_floor: float, db_ceiling: float) -> np.ndarr
 
 
 def show_sample(result_path: str, save: bool = False, db_floor: float = -150.0, db_ceiling: float = -50.0) -> None:
-    data = torch.load(result_path, map_location="cpu")
+    data = torch.load(result_path, map_location="cpu", weights_only=True)
 
     # Un-normalize to dBm
     lr = unnormalize(tensor_to_image(data["lr"]), db_floor, db_ceiling)

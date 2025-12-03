@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -7,6 +8,11 @@ from typing import List, Optional, Tuple
 import numpy as np
 import sionna
 from sionna.rt import PlanarArray, Transmitter
+
+from poc.data_modules.height_map_generator import ray_cast_los
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # dr.set_flag(dr.JitFlag.Debug, True)  # NOTE: use if you get error in san_francisco processing...
 
@@ -24,6 +30,8 @@ class TransmitterConfig:
     grid_randomization: float = 0.0  # 0.0 = perfect grid, 1.0 = fully random within cells
     margin: float = 30.0  # margin to leave from scene borders when placing transmitters
     include_height_map: bool = False  # Whether to generate and include height map as second channel
+    include_building_mask: bool = False  # Whether to include building mask in grid info
+    include_los_mask: bool = False  # Whether to include LOS mask in grid info
     samples_per_tx: int = 1_000_000  # how many rays to cast per transmitter
     max_depth: int = 5  # maximum ray tracing depth
 
@@ -84,12 +92,17 @@ class SceneTransmitterBuilder:
         for i in range(1, max_scan + 1):
             self._safe_remove(f"tx_{i}")
 
-    @staticmethod
     def _generate_grid_positions(
-        config: TransmitterConfig, scene_grid_info: dict | None = None
+        self, config: TransmitterConfig, scene_grid_info: dict | None = None
     ) -> Tuple[List[List[float]], dict]:
         """Generate transmitter positions and return grid info"""
         grid_dim = int(np.ceil(np.sqrt(config.n_tx)))
+        height_map_grid = None
+        building_mask_grid = None
+        ground_height_map_grid = None
+        los_mask_grid = None
+        nx = None
+        ny = None
 
         # Retrieve scene grid info if provided
         if scene_grid_info is not None:
@@ -114,15 +127,27 @@ class SceneTransmitterBuilder:
                     f"does not match expected grid shape {(scene_grid_info['ngrid'], scene_grid_info['ngrid'])}"
                 )
 
-            # TODO: If also include building mask or other maps add elif statements here
+            if config.include_building_mask:
+                building_mask_grid = scene_grid_info["building_mask"][
+                    row_bottom_index:row_top_index, col_left_index:col_right_index
+                ]
+                assert building_mask_grid.shape == (scene_grid_info["ngrid"], scene_grid_info["ngrid"]), (
+                    f"Extracted building mask shape {building_mask_grid.shape} "
+                    f"does not match expected grid shape {(scene_grid_info['ngrid'], scene_grid_info['ngrid'])}"
+                )
 
-            else:
-                height_map_grid = None
+            if config.include_los_mask:
+                ground_height_map_grid = scene_grid_info["ground_height_map"][
+                    row_bottom_index:row_top_index, col_left_index:col_right_index
+                ]
 
             # Determine grid coordinates in world units
             center_x, center_y = _index_to_world(center_row_index, center_col_index, scene_grid_info)
             map_xmin, map_ymin = _index_to_world(row_bottom_index, col_left_index, scene_grid_info)
             map_xmax, map_ymax = _index_to_world(row_top_index - 1, col_right_index - 1, scene_grid_info)
+
+            nx = scene_grid_info["ngrid"]
+            ny = scene_grid_info["ngrid"]
 
         else:
             center_x, center_y = 0.0, 0.0
@@ -142,6 +167,11 @@ class SceneTransmitterBuilder:
             "grid_spacing": grid_spacing,
             "grid_dim": grid_dim,
             "height_map": height_map_grid,
+            "building_mask": building_mask_grid,
+            "ground_height_map": ground_height_map_grid,
+            "los_mask": los_mask_grid,
+            "nx": nx,
+            "ny": ny,
         }
 
         # Generate positions
@@ -200,6 +230,11 @@ class SceneTransmitterBuilder:
 
             name = f"tx_{i}"
             self.scene.add(Transmitter(name=name, position=pos, power_dbm=config.tx_power_dbm, color=(0, 0, 1)))
+
+        # make los mask part of grid_info
+        if config.include_los_mask:
+            los_mask = ray_cast_los(self.scene, grid_info, grid_info["ground_height_map"])
+            grid_info["los_mask"] = los_mask
 
         return tx_positions, grid_info
 

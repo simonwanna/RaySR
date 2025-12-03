@@ -6,11 +6,11 @@ generator:
 
   # Data generation
   metric_type: path_gain  # path_gain, rss, or sinr
-  n_samples: 5
+  n_samples: 7
   dataset_path: ${data_dir}/train_val  # change data_dir in the main config file
   naming_convention: ${scene_name}_sample  # + _{sample.sample_id:04d}.pt
   to_db: true  # Convert to dB scale before saving
   db_floor: ${db_floor}  # dB floor for path_gain and sinr, None for no floor
 
   min_object_height: 10.0  # Minimum object height to consider for transmitter placement (meters)
-  step_length: 0.1 # Step length for scene grid discretization (meters)
+  step_length: 0.5 # Step length for scene grid discretization (meters)

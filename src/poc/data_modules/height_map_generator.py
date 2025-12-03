@@ -77,6 +77,58 @@ def _ray_cast(
     return height_map
 
 
+def ray_cast_los(scene: "Scene", grid_info: dict, ground_height_map: np.ndarray) -> np.ndarray:
+    map_bounds = grid_info["map_bounds"]
+    xmin = map_bounds[0][0]
+    xmax = map_bounds[0][1]
+    ymin = map_bounds[1][0]
+    ymax = map_bounds[1][1]
+    nx = grid_info["nx"]
+    ny = grid_info["ny"]
+
+    x_vals = np.linspace(xmin, xmax, nx)
+    y_vals = np.linspace(ymin, ymax, ny)
+
+    mi_scene = scene.mi_scene
+
+    tx = next(iter(scene.transmitters.values()))
+
+    x_vals = np.linspace(xmin, xmax, nx)
+    y_vals = np.linspace(ymin, ymax, ny)
+    X, Y = np.meshgrid(x_vals, y_vals)
+
+    Xf = X.ravel()
+    Yf = Y.ravel()
+    Zf = ground_height_map.ravel()
+
+    ray_origins = mi.Point3f(
+        np.full_like(X.size, tx.position.x[0]),
+        np.full_like(X.size, tx.position.y[0]),
+        np.full_like(X.size, tx.position.z[0]),
+    )
+
+    # Create ray directions towards each grid point
+    dx = Xf - tx.position.x[0]
+    dy = Yf - tx.position.y[0]
+    dz = Zf - tx.position.z[0]
+    L = np.sqrt(dx * dx + dy * dy + dz * dz)
+
+    ray_directions = mi.Vector3f(dx / L, dy / L, dz / L)
+
+    ray = mi.Ray3f(o=ray_origins, d=ray_directions)
+    intersect = mi_scene.ray_intersect(ray=ray)
+    hits = intersect.p.z
+    valid = intersect.is_valid()
+
+    hits = np.array(hits, dtype=float)
+    valid_mask = np.array(valid, dtype=bool)
+    hits[~valid_mask] = np.nan
+
+    los_mask = hits.reshape(ny, nx)
+
+    return los_mask
+
+
 def _generate_tx_height_map(scene: "Scene", tx_disc_info: dict, min_object_height: float) -> np.ndarray:
     """
     Generate transmitter height map by ray casting the scene.
