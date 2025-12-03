@@ -43,6 +43,7 @@ uv run generate
     ```
 
 **Note:** If you get an jit_cuda_compile() error, try to uncomment the `dr.set_flag(dr.JitFlag.Debug, True)` line in `data_modules/builder.py`.
+
 ---
 
 ## 🏋️ Training
@@ -100,18 +101,4 @@ uv run src/poc/visualize.py --results_dir outputs/results
 - For experiments, edit or copy config files in `configs/`.
 - Data generation places transmitters on a grid with possible horizontal/vertical randomization. The center of the grid is randomized within a range and placed in a scene. Change `scene_name` for diverse data. **Note** that the scale factor needs to be the same for the model later on.
 - The model currently implemented is [PAN (Pixel Attention Network)](https://arxiv.org/abs/2010.01073). It uses a CNN backbone with pixel attention blocks to focus on important regions, and a residual connection with bilinear interpolation to learn only the missing details.   Input is a low-res radio map; output is a super-resolved map at *scale* higher resolution.
-
----
-
-## 🛠️ TODO
-
-- [x] Fix: Model output too similar to low-res input
-- [ ] Add larger scenes (using Blender)
-- [x] Add WandB logging (with image logging)
-- [ ] Multiprocessing for data generation (maybe not needed? Pretty fast already)
-- [ ] Data augmentation (flip/rotate, etc.)
-- [x] Set scene boundary for transmitter placement
-- [x] Prevent transmitters from being placed inside buildings etc.
-- [x] Save checkpoints in Hydra job folder
-- [x] Fix image mirroring bug in generation
-- [x] Add multi-channel support (e.g., z value for buildings / mask for where there are no signal)
+- ESRT is implemented in branch `esrt`, but requires significant amount of additional compute resources.
