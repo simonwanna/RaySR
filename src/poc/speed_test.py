@@ -36,7 +36,7 @@ def measure_solver(scene: sionna.rt.Scene, cell_size: float, coverage_size: floa
     rm = solver(
         scene,
         max_depth=5,
-        samples_per_tx=100_000,
+        samples_per_tx=1000000,
         cell_size=cell_size,
         center=[0, 0, 0],
         size=[coverage_size, coverage_size],
@@ -55,7 +55,7 @@ def measure_solver(scene: sionna.rt.Scene, cell_size: float, coverage_size: floa
         _ = solver(
             scene,
             max_depth=5,
-            samples_per_tx=100_000,
+            samples_per_tx=1000000,
             cell_size=cell_size,
             center=[0, 0, 0],
             size=[coverage_size, coverage_size],
@@ -111,7 +111,7 @@ def main() -> None:
 
     # Experiment parameters
     coverage_size = 500.0
-    samples = 5
+    samples = 20
     base_cell_size = 3.0
     scales = [2, 3, 4]
 
